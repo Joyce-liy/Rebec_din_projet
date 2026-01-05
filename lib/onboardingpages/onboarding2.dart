@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:pharma/onboardingpages/onboarding3.dart'; // Importation déjà présente
+import 'package:lottie/lottie.dart'; // 1. Importez le package
+import 'package:pharma/onboardingpages/onboarding3.dart';
 
 class Onboarding2 extends StatelessWidget {
   const Onboarding2({super.key});
@@ -11,12 +12,11 @@ class Onboarding2 extends StatelessWidget {
       body: SafeArea(
         child: Column(
           children: [
-            // Bouton "Passer" (Skip)
+            // Bouton "Passer"
             Align(
               alignment: Alignment.topRight,
               child: TextButton(
                 onPressed: () {
-                  // Remplacer par votre page de Login/Home finale
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(builder: (context) => const Onboarding3()),
@@ -35,9 +35,12 @@ class Onboarding2 extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Image.asset(
-                      'assets/onboarding2.webp', 
+                    // 2. REMPLACEMENT : Lottie au lieu de Image.asset
+                    Lottie.asset(
+                      'assets/Messaging CharacterAnimation.json', // Votre fichier Lottie
                       height: 280,
+                      repeat: true, // L'animation tourne en boucle
+                      animate: true,
                     ),
                     const SizedBox(height: 40),
                     const Text(
@@ -76,7 +79,7 @@ class Onboarding2 extends StatelessWidget {
             
             const SizedBox(height: 40),
 
-            // Bouton "Suivant" mis à jour
+            // Bouton "Suivant"
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: SizedBox(
@@ -84,7 +87,6 @@ class Onboarding2 extends StatelessWidget {
                 height: 55,
                 child: ElevatedButton(
                   onPressed: () {
-                    // ACTION : Navigation vers Onboarding3
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const Onboarding3()),

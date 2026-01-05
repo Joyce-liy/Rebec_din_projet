@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart'; // 1. Import obligatoire
 import 'package:pharma/onboardingpages/onboarding2.dart';
 
 class OnboardingScreen extends StatefulWidget {
@@ -13,26 +14,24 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFE0F7F4), // Light mint background from your image
+      backgroundColor: const Color(0xFFE0F7F4),
       body: SafeArea(
         child: Column(
           children: [
-            // "Passer" (Skip) Button
+            // Bouton "Passer"
             Align(
               alignment: Alignment.topRight,
               child: TextButton(
                 onPressed: () {
-                  // Navigate and remove onboarding from stack
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => Onboarding2()), // Change to your Login widget
+                    MaterialPageRoute(builder: (context) => Onboarding2()),
                   );
                 },
-                child: Text("passer", style: TextStyle(color: Colors.black54)),
+                child: const Text("passer", style: TextStyle(color: Colors.black54)),
               ),
             ),
             
-            // Image and Text Content
             Expanded(
               child: PageView(
                 controller: _pageController,
@@ -41,20 +40,20 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 },
                 children: [
                   buildPageContent(),
-                  // Add more pages here later
+                  // Vous pourrez ajouter Onboarding2Content() ici plus tard
                 ],
               ),
             ),
 
-            // Indicator Dots
+            // Indicateurs
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(3, (index) => buildDot(index)),
             ),
             
-            SizedBox(height: 40),
+            const SizedBox(height: 40),
 
-            // "Suivant" Button
+            // Bouton "Suivant"
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: SizedBox(
@@ -62,7 +61,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 height: 50,
                 child: ElevatedButton(
                   onPressed: () {
-                    // ACTION : Navigation vers Onboarding3
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (context) => const Onboarding2()),
@@ -74,11 +72,11 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       borderRadius: BorderRadius.circular(25),
                     ),
                   ),
-                  child: Text("Suivant", style: TextStyle(color: Colors.white, fontSize: 18)),
+                  child: const Text("Suivant", style: TextStyle(color: Colors.white, fontSize: 18)),
                 ),
               ),
             ),
-            SizedBox(height: 60),
+            const SizedBox(height: 60),
           ],
         ),
       ),
@@ -91,15 +89,21 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Image.asset('assets/onboarding1.png', height: 250),
-          SizedBox(height: 40),
-          Text(
+          // 2. REMPLACEMENT : Image par Lottie
+          Lottie.asset(
+            'assets/Needs Your Location or GPS.json', // Votre fichier d'animation
+            height: 250,
+            repeat: true,
+            animate: true,
+          ),
+          const SizedBox(height: 40),
+          const Text(
             "Ne marchez plus\npour rien!",
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
-          SizedBox(height: 20),
-          Text(
+          const SizedBox(height: 20),
+          const Text(
             "Trouver vos medicaments en quelques secondes sans vous deplaser inutilement dans tout yaounde",
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 16, color: Colors.black87),
@@ -110,12 +114,13 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   }
 
   Widget buildDot(int index) {
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       height: 8,
-      width: 8,
-      margin: EdgeInsets.only(right: 5),
+      width: _currentPage == index ? 20 : 8,
+      margin: const EdgeInsets.only(right: 5),
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        borderRadius: BorderRadius.circular(5),
         color: _currentPage == index ? Colors.black : Colors.black26,
       ),
     );

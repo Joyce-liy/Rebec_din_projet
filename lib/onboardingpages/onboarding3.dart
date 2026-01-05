@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart'; // 1. Import de Lottie
 import 'package:pharma/pageconnection/login_screen.dart';
 
 class Onboarding3 extends StatelessWidget {
@@ -7,22 +8,21 @@ class Onboarding3 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFB3CDE0), // Light blue background from your image
+      backgroundColor: const Color(0xFFB3CDE0), // Bleu clair
       body: SafeArea(
         child: Column(
           children: [
-            // "Passer" (Skip) Button
+            // Bouton "Passer"
             Align(
               alignment: Alignment.topRight,
               child: TextButton(
-               onPressed: () {
-                  // Navigate and remove onboarding from stack
+                onPressed: () {
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => LoginScreen()), // Change to your Login widget
+                    MaterialPageRoute(builder: (context) => const LoginScreen()),
                   );
                 },
-                child: Text(
+                child: const Text(
                   "passer", 
                   style: TextStyle(color: Colors.black54), 
                 ),
@@ -33,36 +33,37 @@ class Onboarding3 extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // QR Scanning Illustration
-                  // This image has a white circular background in your screenshot
+                  // Animation Lottie dans un cercle blanc
                   Container(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
                     ),
-                    padding: EdgeInsets.all(20),
-                    child: Image.asset(
-                      'assets/onboarding3.png', 
-                      height: 250,
+                    padding: const EdgeInsets.all(30), // Un peu plus de padding pour l'animation
+                    child: Lottie.asset(
+                      'assets/Qr Code Scanner.json', // Votre fichier Lottie
+                      height: 220,
+                      repeat: true,
+                      animate: true,
                     ),
                   ),
-                  SizedBox(height: 50),
+                  const SizedBox(height: 50),
                   
-                  // Title
-                  Text(
-                    "Scannez  et trouvez",
+                  // Titre
+                  const Text(
+                    "Scannez et trouvez",
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 22,
+                      fontSize: 24,
                       fontWeight: FontWeight.bold,
                       color: Colors.black,
                     ),
                   ),
-                  SizedBox(height: 20),
+                  const SizedBox(height: 20),
                   
-                  // Description text
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 40),
+                  // Description
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 40),
                     child: Text(
                       "Prenez votre ordonnance en photo ou tapez le nom du medicament. On s’occupe du reste.",
                       textAlign: TextAlign.center,
@@ -77,7 +78,7 @@ class Onboarding3 extends StatelessWidget {
               ),
             ),
 
-            // "C'est parti !" Button with Arrow
+            // Bouton "C'est parti !"
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: SizedBox(
@@ -85,19 +86,18 @@ class Onboarding3 extends StatelessWidget {
                 height: 55,
                 child: ElevatedButton(
                   onPressed: () {
-                    // ACTION : Navigation vers Onboarding3
-                    Navigator.push(
+                    Navigator.pushReplacement(
                       context,
                       MaterialPageRoute(builder: (context) => const LoginScreen()),
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFF1565C0), // Darker blue
+                    backgroundColor: const Color(0xFF1565C0), // Bleu foncé
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
-                  child: Row(
+                  child: const Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
@@ -111,7 +111,7 @@ class Onboarding3 extends StatelessWidget {
                 ),
               ),
             ),
-            SizedBox(height: 60),
+            const SizedBox(height: 60),
           ],
         ),
       ),
