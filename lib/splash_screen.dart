@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart'; // 1. Import de Lottie
 import 'package:pharma/onboardingpages/onboarding1_screen.dart';
-//import 'home_screen.dart'; // We will create this next
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _SplashScreenState createState() => _SplashScreenState();
 }
 
@@ -15,13 +14,16 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    // This timer waits for 3 seconds, then moves to the next screen
-    Timer(Duration(seconds: 3), () {
-  Navigator.pushReplacement(
-    context,
-    MaterialPageRoute(builder: (context) => OnboardingScreen()),
-  );
-});
+    
+    // On attend 4 secondes pour laisser l'animation se jouer
+    Timer(const Duration(seconds: 4), () {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => OnboardingScreen()),
+        );
+      }
+    });
   }
 
   @override
@@ -32,12 +34,37 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Your Logo from the image
-            Image.asset('assets/recherche.webp', width: 200),
-            SizedBox(height: 20),
-            // A loading indicator for a professional touch
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+            // 2. REMPLACEMENT : Image statique par une animation Lottie
+            Lottie.asset(
+              'assets/Illustration Search pharmacy unit.json', 
+              width: 250,
+              repeat: true,
+              animate: true,
+            ),
+            
+            const SizedBox(height: 30),
+            
+            // 3. Texte ou Logo de l'application
+            const Text(
+              "PHARMA",
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.green,
+                letterSpacing: 2,
+              ),
+            ),
+            
+            const SizedBox(height: 20),
+            
+            // Indicateur de chargement plus discret
+            const SizedBox(
+              width: 40,
+              height: 40,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.green),
+              ),
             ),
           ],
         ),
