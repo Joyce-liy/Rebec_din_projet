@@ -8,7 +8,7 @@ class Onboarding3 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFB3CDE0), // Bleu clair
+      backgroundColor: const Color(0xFFE0F7F4), // Bleu clair
       body: SafeArea(
         child: Column(
           children: [
@@ -19,7 +19,7 @@ class Onboarding3 extends StatelessWidget {
                 onPressed: () {
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => const LoginScreen()),
+                    MaterialPageRoute(builder: (context) => const LoginScreen(userName: '',)),
                   );
                 },
                 child: const Text(
@@ -88,11 +88,11 @@ class Onboarding3 extends StatelessWidget {
                   onPressed: () {
                     Navigator.pushReplacement(
                       context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen()),
+                      MaterialPageRoute(builder: (context) => const LoginScreen(userName: '',)),
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1565C0), // Bleu foncé
+                    backgroundColor: Colors.green, // Bleu foncé
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),

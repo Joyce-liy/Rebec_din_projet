@@ -1,18 +1,22 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:flutter/services.dart';
+import 'package:pharma/edit.dart';
 import 'package:pharma/pageconnection/login_screen.dart';
 
+
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key});
+  final String userName;
+
+  const SettingsScreen({super.key, this.userName = "Joyce"});
 
   @override
-  // ignore: library_private_types_in_public_api
   _SettingsScreenState createState() => _SettingsScreenState();
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Initialiser à null pour gérer le chargement
+  // Variable locale pour gérer la mise à jour dynamique du nom
+  late String localUserName;
   String? selectedQuartier; 
   bool isFrench = true;
   List<String> quartiers = [];
@@ -20,130 +24,117 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   void initState() {
     super.initState();
+    // On initialise le nom local avec le nom reçu du Home
+    localUserName = widget.userName;
     loadQuartiers();
   }
 
   Future<void> loadQuartiers() async {
     try {
-      final String response = await rootBundle.loadString('assets/data/quartiers.json');
+      final String response = await rootBundle.loadString('assets/quartiers.json');
       final data = await json.decode(response);
-      
       setState(() {
         quartiers = List<String>.from(data['yaounde']);
-        // Sélectionner le premier quartier par défaut si la liste n'est pas vide
-        if (quartiers.isNotEmpty) {
-          selectedQuartier = quartiers[0]; 
-        }
+        if (quartiers.isNotEmpty) selectedQuartier = quartiers[0]; 
       });
     } catch (e) {
-      print("Erreur lors du chargement du JSON: $e");
+      debugPrint("Erreur JSON: $e");
+    }
+  }
+
+  // MÉTHODE DE NAVIGATION VERS L'ÉDITION
+  Future<void> _navigateToEdit() async {
+    // On attend le résultat (le nouveau nom) de la page EditProfileScreen
+    final String? newName = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => EditProfileScreen(currentName: localUserName),
+      ),
+    );
+
+    // Si un nouveau nom a été saisi, on met à jour l'interface
+    if (newName != null && newName.isNotEmpty) {
+      setState(() {
+        localUserName = newName;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Calcul de l'initiale basé sur le nom LOCAL
+    String initial = localUserName.isNotEmpty 
+        ? localUserName[0].toUpperCase() 
+        : "J";
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
         child: Column(
           children: [
             const SizedBox(height: 20),
-            // Header
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const CircleAvatar(
+                  CircleAvatar(
                     radius: 40,
-                    backgroundColor: Color(0xFFAED5E4),
-                    child: Text("J", style: TextStyle(fontSize: 32, color: Colors.black)),
+                    backgroundColor: const Color(0xFFE8F5E9),
+                    child: Text(
+                      initial, // L'initiale change si localUserName change
+                      style: const TextStyle(
+                        fontSize: 32, 
+                        color: Colors.green, 
+                        fontWeight: FontWeight.bold
+                      ),
+                    ),
                   ),
-                  IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () {}),
+                  // BOUTON ÉDITER
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined), 
+                    onPressed: _navigateToEdit, // Appelle la navigation
+                  ),
                 ],
               ),
             ),
+            
             const SizedBox(height: 30),
 
             _buildSectionHeader("Paramètres"),
-            
-            // Correction ici pour le Dropdown
             _buildSettingRow(
               "Mon Quartier",
               quartiers.isEmpty 
-                ? const CircularProgressIndicator.adaptive() // Affiche un loader pendant le chargement
+                ? const CircularProgressIndicator.adaptive()
                 : DropdownButton<String>(
                     value: selectedQuartier,
                     underline: const SizedBox(),
-                    icon: const Icon(Icons.keyboard_arrow_down),
-                    items: quartiers.map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(value), // Affiche le nom simple
-                      );
-                    }).toList(),
-                    onChanged: (newValue) {
-                      setState(() {
-                        selectedQuartier = newValue;
-                      });
-                    },
+                    items: quartiers.map((q) => DropdownMenuItem(value: q, child: Text(q))).toList(),
+                    onChanged: (val) => setState(() => selectedQuartier = val),
                   ),
             ),
             
-            const Divider(height: 1),
-            
             _buildSettingRow(
               "Langue",
-              Row(
-                children: [
-                  const Text("Française"),
-                  const SizedBox(width: 10),
-                  Switch(
-                    value: isFrench,
-                    onChanged: (val) => setState(() => isFrench = val),
-                    activeColor: Colors.blue,
-                  ),
-                ],
+              Switch(
+                value: isFrench,
+                onChanged: (val) => setState(() => isFrench = val),
+                activeColor: Colors.green,
               ),
             ),
 
             _buildSectionHeader("Aide"),
             _buildSimpleRow("Numéros d’urgence"),
             
-            const SizedBox(height: 20),
-
-            // Espace Pharmacien
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: InkWell( // Ajout d'une interaction
-                onTap: () {},
-                child: Container(
-                  padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFB3CDE0),
-                    borderRadius: BorderRadius.circular(5),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.lock, color: Colors.black),
-                      SizedBox(width: 20),
-                      Text("Espace pharmacien", style: TextStyle(fontSize: 16)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
             const Spacer(),
 
             TextButton(
-                onPressed: () {
-                  // Remplacer par votre page de Login/Home finale
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  );
-                },
+              onPressed: () {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  (route) => false,
+                );
+              },
               child: const Text("Déconnecter", style: TextStyle(color: Colors.redAccent, fontSize: 16)),
             ),
             const SizedBox(height: 30),
@@ -167,19 +158,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title, style: const TextStyle(fontSize: 16)),
-          trailing,
-        ],
+        children: [Text(title, style: const TextStyle(fontSize: 16)), trailing],
       ),
     );
   }
 
   Widget _buildSimpleRow(String title) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-      title: Text(title, style: const TextStyle(fontSize: 16)),
-      onTap: () {},
-    );
+    return ListTile(title: Text(title), contentPadding: const EdgeInsets.symmetric(horizontal: 20), onTap: () {});
   }
 }

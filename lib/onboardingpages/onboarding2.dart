@@ -24,7 +24,7 @@ class Onboarding2 extends StatelessWidget {
                 },
                 child: const Text(
                   "passer", 
-                  style: TextStyle(color: Color(0xFFAED5E4)), 
+                  style: TextStyle(color: Colors.black54), 
                 ),
               ),
             ),
@@ -49,7 +49,7 @@ class Onboarding2 extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: Color(0xFF3B82F6),
+                        color:Color.fromARGB(255, 178, 224, 180),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -93,7 +93,7 @@ class Onboarding2 extends StatelessWidget {
                     );
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF3B82F6),
+                    backgroundColor: Colors.green,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),

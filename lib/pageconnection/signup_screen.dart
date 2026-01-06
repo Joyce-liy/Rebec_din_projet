@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:pharma/search_screen.dart';
+import 'package:pharma/home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({super.key});
 
   @override
-  // ignore: library_private_types_in_public_api
   _SignupScreenState createState() => _SignupScreenState();
 }
 
 class _SignupScreenState extends State<SignupScreen> {
   bool _isAccepted = false;
+  // Contrôleur pour le champ nom
+  final TextEditingController _nameController = TextEditingController();
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +27,7 @@ class _SignupScreenState extends State<SignupScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.black),
+          icon: const Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -29,24 +36,22 @@ class _SignupScreenState extends State<SignupScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              "S’inscrire",
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 10),
-            Text(
-              "Creer un compte pour trouver vos medicaments a yaounde",
-              style: TextStyle(fontSize: 16, color: Colors.black54),
-            ),
-            SizedBox(height: 30),
+            const Text("S’inscrire", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            const Text("Creer un compte pour trouver vos medicaments a yaounde", style: TextStyle(fontSize: 16, color: Colors.black54)),
+            const SizedBox(height: 30),
             
-            // Input Fields
-            buildInputField(label: "Nom Complet", hint: "Votre nom", icon: Icons.person_outline),
+            // On passe le contrôleur ici
+            buildInputField(
+              label: "Nom Complet", 
+              hint: "Votre nom", 
+              icon: Icons.person_outline,
+              controller: _nameController, 
+            ),
             buildInputField(label: "Adresse Email", hint: "exemple@email.com", icon: Icons.email_outlined),
             buildInputField(label: "Mot de passe", hint: "", icon: Icons.lock_outline, isPassword: true),
             buildInputField(label: "Comfirmer mot de passe", hint: "", icon: Icons.lock_outline, isPassword: true),
 
-            // Terms Checkbox
             Row(
               children: [
                 Checkbox(
@@ -54,45 +59,39 @@ class _SignupScreenState extends State<SignupScreen> {
                   onChanged: (value) => setState(() => _isAccepted = value!),
                   activeColor: Colors.green,
                 ),
-                Expanded(
-                  child: Text(
-                    "J'accepte les Conditions d'utilisation et la politique de Confidentialite.",
-                    style: TextStyle(fontSize: 12),
-                  ),
+                const Expanded(
+                  child: Text("J'accepte les Conditions d'utilisation et la politique de Confidentialite.", style: TextStyle(fontSize: 12)),
                 ),
               ],
             ),
-            
-            SizedBox(height: 20),
+            const SizedBox(height: 20),
 
-            // Sign Up Button
             SizedBox(
               width: double.infinity,
               height: 55,
               child: ElevatedButton(
-                  onPressed: () {
-                  // Remplacer par votre page de Login/Home finale
+                onPressed: () {
+                  // RÉCUPÉRATION DU NOM
+                  String name = _nameController.text.trim();
+                  if (name.isEmpty) name = "Nouvel Utilisateur";
+
                   Navigator.pushReplacement(
                     context,
-                    MaterialPageRoute(builder: (context) => const SearchScreen()),
+                    MaterialPageRoute(builder: (context) => HomeScreen(userName: name)),
                   );
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.green,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
                 ),
-                child: Text("S’inscrire", style: TextStyle(color: Colors.white, fontSize: 18)),
+                child: const Text("S’inscrire", style: TextStyle(color: Colors.white, fontSize: 18)),
               ),
             ),
 
-            // Login Link
             Center(
               child: TextButton(
-                onPressed: () { /* Navigate to Login */ },
-                child: Text(
-                  "Deja un compte? Connectez-vous",
-                  style: TextStyle(color: Colors.black87),
-                ),
+                onPressed: () => Navigator.pop(context),
+                child: const Text("Deja un compte? Connectez-vous", style: TextStyle(color: Colors.black87)),
               ),
             ),
           ],
@@ -101,20 +100,28 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  Widget buildInputField({required String label, required String hint, required IconData icon, bool isPassword = false}) {
+  // Fonction buildInputField mise à jour pour accepter un controller
+  Widget buildInputField({
+    required String label, 
+    required String hint, 
+    required IconData icon, 
+    bool isPassword = false,
+    TextEditingController? controller, // AJOUT DU CONTROLLER ICI
+  }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: TextFormField(
+        controller: controller, // LIEN AVEC LE CONTROLLER
         obscureText: isPassword,
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
           prefixIcon: Icon(icon),
-          suffixIcon: isPassword ? Icon(Icons.visibility_outlined) : null,
+          suffixIcon: isPassword ? const Icon(Icons.visibility_outlined) : null,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(15),
-            borderSide: BorderSide(color: Colors.black26),
+            borderSide: const BorderSide(color: Colors.black26),
           ),
         ),
       ),
