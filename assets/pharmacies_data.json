@@ -1,0 +1,53 @@
+{
+  "medicaments": [
+    {
+      "id": "med_001",
+      "nom": "Doliprane",
+      "dosage": "1000mg",
+      "disponibilite": [
+        {
+          "pharmacie_id": "ph_001",
+          "nom_pharmacie": "Pharmacie du Centre",
+          "quartier": "Bastos, Yaoundé",
+          "statut": "En stock",
+          "prix": "1500 FCFA"
+        },
+        {
+          "pharmacie_id": "ph_002",
+          "nom_pharmacie": "Pharmacie de la Paix",
+          "quartier": "Mvan, Yaoundé",
+          "statut": "Stock limité",
+          "prix": "1600 FCFA"
+        }
+      ]
+    },
+    {
+      "id": "med_002",
+      "nom": "Efferalgan",
+      "dosage": "500mg",
+      "disponibilite": [
+        {
+          "pharmacie_id": "ph_003",
+          "nom_pharmacie": "Pharmacie Nouvelle",
+          "quartier": "Biyem-Assi, Yaoundé",
+          "statut": "En stock",
+          "prix": "1200 FCFA"
+        }
+      ]
+    },
+    {
+      "id": "med_003",
+      "nom": "Nurofen",
+      "dosage": "400mg",
+      "disponibilite": [
+        {
+          "pharmacie_id": "ph_001",
+          "nom_pharmacie": "Pharmacie du Centre",
+          "quartier": "Bastos, Yaoundé",
+          "statut": "Rupture de stock",
+          "prix": "2500 FCFA"
+        }
+      ]
+    }
+  ]
+}
