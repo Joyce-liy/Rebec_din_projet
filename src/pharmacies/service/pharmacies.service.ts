@@ -61,6 +61,7 @@ export class PharmaciesService {
         $3
       )
       ORDER BY distance_m ASC
+      LIMIT 5;
       `,
       [
         Number(lng),   // ⚠️ longitude en premier
