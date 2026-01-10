@@ -1,51 +1,127 @@
 {
-  "medicaments": [
+  "pharmacies": [
     {
-      "id": "med_001",
-      "nom": "Doliprane",
-      "dosage": "1000mg",
-      "disponibilite": [
+      "id": "ph_001",
+      "nom": "Pharmacie du Centre",
+      "quartier": "Bastos, Yaoundé",
+      "latitude": 3.873121,
+      "longitude": 11.521708,
+      "telephone": "+237 222 00 00 01",
+      "horaires": "08h00 - 21h00",
+      "medicaments": [
         {
-          "pharmacie_id": "ph_001",
-          "nom_pharmacie": "Pharmacie du Centre",
-          "quartier": "Bastos, Yaoundé",
-          "statut": "En stock",
-          "prix": "1500 FCFA"
+          "id": "med_001",
+          "nom": "Doliprane",
+          "dosage": "1000mg",
+          "statut": "en_stock",
+          "quantite": 42,
+          "prix": 1500,
+          "last_update": "2026-01-09T20:45:00Z"
         },
         {
-          "pharmacie_id": "ph_002",
-          "nom_pharmacie": "Pharmacie de la Paix",
-          "quartier": "Mvan, Yaoundé",
-          "statut": "Stock limité",
-          "prix": "1600 FCFA"
+          "id": "med_002",
+          "nom": "Efferalgan",
+          "dosage": "500mg",
+          "statut": "stock_limite",
+          "quantite": 8,
+          "prix": 1250,
+          "last_update": "2026-01-09T20:40:00Z"
+        },
+        {
+          "id": "med_003",
+          "nom": "Nurofen",
+          "dosage": "400mg",
+          "statut": "rupture",
+          "quantite": 0,
+          "prix": 2400,
+          "last_update": "2026-01-09T19:15:00Z"
         }
       ]
     },
     {
-      "id": "med_002",
-      "nom": "Efferalgan",
-      "dosage": "500mg",
-      "disponibilite": [
+      "id": "ph_002",
+      "nom": "Pharmacie de la Paix",
+      "quartier": "Mvan, Yaoundé",
+      "latitude": 3.818472,
+      "longitude": 11.513324,
+      "telephone": "+237 222 00 00 02",
+      "horaires": "07h30 - 22h00",
+      "medicaments": [
         {
-          "pharmacie_id": "ph_003",
-          "nom_pharmacie": "Pharmacie Nouvelle",
-          "quartier": "Biyem-Assi, Yaoundé",
-          "statut": "En stock",
-          "prix": "1200 FCFA"
+          "id": "med_001",
+          "nom": "Doliprane",
+          "dosage": "1000mg",
+          "statut": "stock_limite",
+          "quantite": 12,
+          "prix": 1600,
+          "last_update": "2026-01-09T20:10:00Z"
+        },
+        {
+          "id": "med_002",
+          "nom": "Efferalgan",
+          "dosage": "500mg",
+          "statut": "en_stock",
+          "quantite": 34,
+          "prix": 1180,
+          "last_update": "2026-01-09T20:05:00Z"
         }
       ]
     },
     {
-      "id": "med_003",
-      "nom": "Nurofen",
-      "dosage": "400mg",
-      "disponibilite": [
+      "id": "ph_003",
+      "nom": "Pharmacie Nouvelle",
+      "quartier": "Biyem-Assi, Yaoundé",
+      "latitude": 3.822512,
+      "longitude": 11.481356,
+      "telephone": "+237 222 00 00 03",
+      "horaires": "08h30 - 21h30",
+      "medicaments": [
         {
-          "pharmacie_id": "ph_001",
-          "nom_pharmacie": "Pharmacie du Centre",
-          "quartier": "Bastos, Yaoundé",
-          "statut": "Rupture de stock",
-          "prix": "2500 FCFA"
+          "id": "med_002",
+          "nom": "Efferalgan",
+          "dosage": "500mg",
+          "statut": "en_stock",
+          "quantite": 21,
+          "prix": 1190,
+          "last_update": "2026-01-09T19:55:00Z"
+        },
+        {
+          "id": "med_003",
+          "nom": "Nurofen",
+          "dosage": "400mg",
+          "statut": "en_stock",
+          "quantite": 18,
+          "prix": 2450,
+          "last_update": "2026-01-09T19:30:00Z"
+        }
+      ]
+    },
+    {
+      "id": "ph_004",
+      "nom": "Pharmacie de l'Étoile",
+      "quartier": "Nlongkak, Yaoundé",
+      "latitude": 3.866418,
+      "longitude": 11.497904,
+      "telephone": "+237 222 00 00 04",
+      "horaires": "09h00 - 20h30",
+      "medicaments": [
+        {
+          "id": "med_001",
+          "nom": "Doliprane",
+          "dosage": "1000mg",
+          "statut": "en_stock",
+          "quantite": 27,
+          "prix": 1550,
+          "last_update": "2026-01-09T20:20:00Z"
+        },
+        {
+          "id": "med_003",
+          "nom": "Nurofen",
+          "dosage": "400mg",
+          "statut": "stock_limite",
+          "quantite": 6,
+          "prix": 2500,
+          "last_update": "2026-01-09T19:50:00Z"
         }
       ]
     }
