@@ -21,9 +21,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // Liste des pages de la navigation
     final List<Widget> _pages = [
       HomeBody(userName: widget.userName),        
-      const SearchScreen(),                       
-      const Center(child: Text('Map Page')),      
-      const Center(child: Text('Scanner Page')),   
+      const SearchScreen(),                                             
+      const ScannerPage(), // Cette page s'affichera quand on clique sur l'index 2 (Scanner)
       SettingsScreen(userName: widget.userName),  
     ];
 
@@ -42,7 +41,6 @@ class _HomeScreenState extends State<HomeScreen> {
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Accueil"),
           BottomNavigationBarItem(icon: Icon(Icons.search), label: "Recherche"),
-          BottomNavigationBarItem(icon: Icon(Icons.map_outlined), label: "Map"),
           BottomNavigationBarItem(icon: Icon(Icons.document_scanner_outlined), label: "Scanner"),
           BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profil"),
         ],
@@ -63,113 +61,99 @@ class HomeBody extends StatefulWidget {
 
 class _HomeBodyState extends State<HomeBody> {
   String _selectedFilter = "All";
-  late Future<List<String>> _historyFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _historyFuture = _loadHistory();
-  }
-
-  // MÉTHODE CORRIGÉE : On récupère .value du ValueNotifier
-  Future<List<String>> _loadHistory() async {
-    await HistoryService.instance.load();
-    // history est un ValueNotifier, donc on retourne sa .value
-    return HistoryService.instance.history.value; 
-  }
-
-  Future<void> _handleRefresh() async {
-    setState(() {
-      _historyFuture = _loadHistory();
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
     String initial = widget.userName.isNotEmpty ? widget.userName[0].toUpperCase() : "J";
 
     return SafeArea(
-      child: RefreshIndicator(
-        onRefresh: _handleRefresh,
-        color: Colors.green,
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: 20),
-              // En-tête
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            // En-tête (Hello...)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text("Hello, ${widget.userName}", 
+                    style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                    overflow: TextOverflow.ellipsis),
+                ),
+                GestureDetector(
+                  onTap: () => _showLogoutDialog(context),
+                  child: CircleAvatar(
+                    backgroundColor: const Color(0xFFE8F5E9),
+                    radius: 25,
+                    child: Text(initial, style: const TextStyle(fontSize: 20, color: Colors.green, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 25),
+            // FILTRES (All, Recherche, Scanner)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
                 children: [
-                  Expanded(
-                    child: Text("Hello, ${widget.userName}", 
-                      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis),
-                  ),
-                  GestureDetector(
-                    onTap: () => _showLogoutDialog(context),
-                    child: CircleAvatar(
-                      backgroundColor: const Color(0xFFE8F5E9),
-                      radius: 25,
-                      child: Text(initial, style: const TextStyle(fontSize: 20, color: Colors.green, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
+                  _buildChip("All"),
+                  const SizedBox(width: 10),
+                  _buildChip("Recherche", icon: Icons.search),
+                  const SizedBox(width: 10),
+                  _buildChip("Scanner", icon: Icons.document_scanner),
                 ],
               ),
-              
-              const SizedBox(height: 25),
-              // Filtres (Chips)
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildChip("All"),
-                    const SizedBox(width: 10),
-                    _buildChip("Recherche", icon: Icons.search),
-                    const SizedBox(width: 10),
-                    _buildChip("Scanner", icon: Icons.document_scanner),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 30),
-              Text(
-                _selectedFilter == "All" ? "Historique récent" : "Historique $_selectedFilter",
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 15),
+            ),
+            const SizedBox(height: 30),
+            Text(
+              _selectedFilter == "All" ? "Historique récent" : "Historique $_selectedFilter",
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 15),
 
-              // Liste dynamique
-             // Remplacez le bloc FutureBuilder par celui-ci dans home_screen.dart
-ValueListenableBuilder<List<String>>(
-  valueListenable: HistoryService.instance.history,
-  builder: (context, historyList, child) {
-    // On applique le filtre si nécessaire
-    final filtered = historyList
-        .where((_) => _selectedFilter == "All" || _selectedFilter == "Recherche")
-        .toList();
+            // LISTE DYNAMIQUE FILTRÉE
+            ValueListenableBuilder<List<String>>(
+              valueListenable: HistoryService.instance.history,
+              builder: (context, historyList, child) {
+                
+                // LOGIQUE DE FILTRE CORRIGÉE
+                final filtered = historyList.where((item) {
+                  if (_selectedFilter == "All") return true;
+                  // On vérifie si l'item commence par la source (Recherche: ou Scanner:)
+                  return item.startsWith(_selectedFilter);
+                }).toList();
 
-    if (filtered.isEmpty) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(20.0),
-          child: Text("Aucun historique disponible", style: TextStyle(color: Colors.grey)),
-        ),
-      );
-    }
+                if (filtered.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: Text("Aucun historique disponible", style: TextStyle(color: Colors.grey)),
+                    ),
+                  );
+                }
 
-    // On affiche l'historique mis à jour en temps réel
-    return Column(
-      children: filtered.reversed
-          .map((term) => _buildHistoryItem(Icons.search, term))
-          .toList(),
-    );
-  },
-),
-              const SizedBox(height: 20),
-            ],
-          ),
+                return Column(
+                  children: filtered.map((entry) {
+                    // On sépare la source du nom pour l'affichage
+                    // Exemple: "Scanner:Doliprane" -> parts[0]="Scanner", parts[1]="Doliprane"
+                    final parts = entry.split(':');
+                    final source = parts[0];
+                    final name = parts.length > 1 ? parts[1] : parts[0];
+                    
+                    IconData itemIcon = (source == "Scanner") 
+                        ? Icons.document_scanner 
+                        : Icons.search;
+
+                    return _buildHistoryItem(itemIcon, name);
+                  }).toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
         ),
       ),
     );
