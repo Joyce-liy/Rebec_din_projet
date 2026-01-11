@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:pharma/profil.dart';
 import 'package:pharma/map/medication_map_page.dart';
 import 'package:pharma/models/pharmacy.dart';
+import 'package:pharma/scanner_page.dart';
 import 'package:pharma/services/location_service.dart';
 import 'package:pharma/services/pharmacy_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pharma/services/history_service.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'dart:async';
+import 'package:permission_handler/permission_handler.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -13,9 +19,13 @@ class SearchScreen extends StatefulWidget {
   @override
   _SearchScreenState createState() => _SearchScreenState();
 }
-
-class _SearchScreenState extends State<SearchScreen> {
+class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderStateMixin{
   static const double _radiusMeters = 5000;
+  late stt.SpeechToText _speech;
+  late AnimationController _animationController;
+  Timer? _silenceTimer;
+  bool _isListening = false;
+  //bool _isListening = false;
   final PharmacyService _pharmacyService = PharmacyService();
   final LocationService _locationService = LocationService();
   final TextEditingController _searchController = TextEditingController();
@@ -28,34 +38,76 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _locationUnavailable = false;
   GeoPoint? _userLocation;
 
-  // Liste pour l'historique
-  final List<String> recentSearches = [
-    'Doliprane',
-    'Efferalgan',
-    'Nurofen',
-    'Aspegic',
-    'Spasfon',
-    'Gaviscon',
-    'Maalox',
-  ];
-
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+    _loadSearchHistory();
     _initialize();
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _animationController.dispose();
+    _silenceTimer?.cancel();
     super.dispose();
   }
+  void _startSilenceTimer() {
+    _silenceTimer?.cancel();
+    _silenceTimer = Timer(const Duration(seconds: 5), () {
+      if (_isListening) {
+        _stopListening();
+      }
+    });
+  }
+  void _listen() async {
+  if (!_isListening) {
+    // Initialisation du micro
+    bool available = await _speech.initialize(
+      onStatus: (val) => print('Statut: $val'),
+      onError: (val) => print('Erreur: $val'),
+    );
+    
+    if (available) {
+      setState(() => _isListening = true);
+      _startSilenceTimer(); // Lance le chrono de 5s
+
+      _speech.listen(
+        onResult: (val) {
+          setState(() {
+            _searchController.text = val.recognizedWords;
+            // Si on détecte du texte, on prépare l'icône "Envoyer"
+            if (val.recognizedWords.trim().isNotEmpty) {
+              _isSearching = true; 
+            }
+          });
+          // On réinitialise le chrono à chaque mot capté
+          _startSilenceTimer(); 
+        },
+      );
+    }
+  } else {
+    _stopListening();
+  }
+}
+
+void _stopListening() {
+  _speech.stop();
+  _silenceTimer?.cancel();
+  setState(() => _isListening = false);
+}
+
 
   Future<void> _initialize() async {
     setState(() {
       _loadingCatalog = true;
       _loadingLocation = true;
     });
+
+    await HistoryService.instance.load();
 
     try {
       final catalog = await _pharmacyService.fetchCatalog();
@@ -88,8 +140,10 @@ class _SearchScreenState extends State<SearchScreen> {
         _locationUnavailable = true;
       });
     }
-  }
+  _speech = stt.SpeechToText();
+}
 
+// Fonction pour démarrer/arrêter l'écoute
   Future<void> _refreshLocation() async {
     setState(() {
       _loadingLocation = true;
@@ -124,9 +178,11 @@ class _SearchScreenState extends State<SearchScreen> {
       } else {
         final lower = query.toLowerCase();
         _filtered = _catalog
-            .where((entry) =>
-                entry.nom.toLowerCase().contains(lower) ||
-                entry.dosage.toLowerCase().contains(lower))
+            .where(
+              (entry) =>
+                  entry.nom.toLowerCase().contains(lower) ||
+                  entry.dosage.toLowerCase().contains(lower),
+            )
             .toList();
       }
     });
@@ -150,16 +206,20 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   StockStatus? _aggregateStatusFromList(
-      List<MedicationAvailability> availabilities) {
+    List<MedicationAvailability> availabilities,
+  ) {
     if (availabilities.isEmpty) {
       return null;
     }
     if (availabilities.any(
-        (availability) => availability.medication.status == StockStatus.enStock)) {
+      (availability) => availability.medication.status == StockStatus.enStock,
+    )) {
       return StockStatus.enStock;
     }
-    if (availabilities.any((availability) =>
-        availability.medication.status == StockStatus.stockLimite)) {
+    if (availabilities.any(
+      (availability) =>
+          availability.medication.status == StockStatus.stockLimite,
+    )) {
       return StockStatus.stockLimite;
     }
     return StockStatus.rupture;
@@ -213,15 +273,17 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   List<MedicationAvailability> _sortedAvailabilities(
-      MedicationCatalogEntry entry) {
+    MedicationCatalogEntry entry,
+  ) {
     final List<MedicationAvailability> availabilities =
         List<MedicationAvailability>.from(entry.availabilities);
     if (_userLocation == null) {
       return availabilities;
     }
     final GeoPoint location = _userLocation!;
-    final List<MedicationAvailability> filtered = availabilities
-        .where((availability) {
+    final List<MedicationAvailability> filtered = availabilities.where((
+      availability,
+    ) {
       final distance = GeoUtils.haversineDistance(
         startLat: location.latitude,
         startLng: location.longitude,
@@ -253,17 +315,16 @@ class _SearchScreenState extends State<SearchScreen> {
   void _openMap(MedicationCatalogEntry entry) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => MedicationMapPage(
-          entry: entry,
-          initialUserLocation: _userLocation,
-        ),
+        builder: (context) =>
+            MedicationMapPage(entry: entry, initialUserLocation: _userLocation),
       ),
     );
   }
 
   Future<void> _openDirections(Pharmacy pharmacy) async {
     final Uri url = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=${pharmacy.latitude},${pharmacy.longitude}&travelmode=driving');
+      'https://www.google.com/maps/dir/?api=1&destination=${pharmacy.latitude},${pharmacy.longitude}&travelmode=driving',
+    );
     final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -286,10 +347,7 @@ class _SearchScreenState extends State<SearchScreen> {
           Container(
             width: 8,
             height: 8,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 6),
           Text(
@@ -318,9 +376,7 @@ class _SearchScreenState extends State<SearchScreen> {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: 12),
-            Expanded(
-              child: Text('Localisation en cours...'),
-            ),
+            Expanded(child: Text('Localisation en cours...')),
           ],
         ),
       );
@@ -372,25 +428,20 @@ class _SearchScreenState extends State<SearchScreen> {
                   : 'Activez votre localisation pour un tri par distance.',
             ),
           ),
-          TextButton(
-            onPressed: _refreshLocation,
-            child: const Text('Activer'),
-          ),
+          TextButton(onPressed: _refreshLocation, child: const Text('Activer')),
         ],
       ),
     );
   }
 
   Widget _buildAvailabilityTiles(
-      MedicationCatalogEntry entry,
-      List<MedicationAvailability> availabilities,
-      ) {
+    MedicationCatalogEntry entry,
+    List<MedicationAvailability> availabilities,
+  ) {
     if (availabilities.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Text(
-          'Aucune officine n\'a ete trouvee dans un rayon de 5 km.',
-        ),
+        child: Text('Aucune officine n\'a ete trouvee dans un rayon de 5 km.'),
       );
     }
 
@@ -402,8 +453,10 @@ class _SearchScreenState extends State<SearchScreen> {
         final status = medication.status;
 
         return ListTile(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 6,
+          ),
           leading: Icon(Icons.local_pharmacy, color: _statusColor(status)),
           title: Text(
             pharmacy.nom,
@@ -420,14 +473,19 @@ class _SearchScreenState extends State<SearchScreen> {
                 children: [
                   _buildStatusBadge(status),
                   if (medication.quantite > 0)
-                    Text('Qté: ${medication.quantite}',
-                        style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Text(
+                      'Qté: ${medication.quantite}',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
                   if (distance != null)
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.directions_walk,
-                            size: 16, color: Colors.grey),
+                        const Icon(
+                          Icons.directions_walk,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           _formatDistance(distance),
@@ -482,11 +540,14 @@ class _SearchScreenState extends State<SearchScreen> {
 
         return Card(
           elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: ExpansionTile(
-            tilePadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            tilePadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
             leading: Container(
               width: 12,
               decoration: BoxDecoration(
@@ -519,8 +580,10 @@ class _SearchScreenState extends State<SearchScreen> {
               if (availabilities.isNotEmpty)
                 _buildAvailabilityTiles(entry, availabilities),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -541,23 +604,6 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildHistoryList() {
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: recentSearches.length,
-      separatorBuilder: (context, index) => const Divider(height: 1),
-      itemBuilder: (context, index) => ListTile(
-        contentPadding: EdgeInsets.zero,
-        title:
-            Text(recentSearches[index], style: const TextStyle(fontSize: 16)),
-        trailing:
-            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.black),
-        onTap: () => _onRecentSearchSelected(recentSearches[index]),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -571,7 +617,11 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.account_circle, color: Colors.black, size: 30),
+            icon: const Icon(
+              Icons.account_circle,
+              color: Colors.black,
+              size: 30,
+            ),
             onPressed: () {
               Navigator.pushReplacement(
                 context,
@@ -601,9 +651,13 @@ class _SearchScreenState extends State<SearchScreen> {
                   children: [
                     const SizedBox(height: 20),
                     const Center(
-                      child: Text('La Recherche',
-                          style:
-                              TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        'La Recherche',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _buildLocationBanner(),
@@ -612,7 +666,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       child: Text(
                         'Bonjour, quel medicament recherchez-vous?',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -622,24 +679,37 @@ class _SearchScreenState extends State<SearchScreen> {
                           child: TextField(
                             controller: _searchController,
                             onChanged: _onQueryChanged,
+                            onSubmitted: (value) {
+                              HistoryService.instance.add(value);
+                              _applyFilter(value);
+                            },
                             decoration: InputDecoration(
                               hintText: 'Rechercher un medicament',
                               hintStyle: TextStyle(color: Colors.grey[400]),
-                              prefixIcon: const Icon(Icons.search,
-                                  color: Colors.green, size: 30),
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Colors.green,
+                                size: 30,
+                              ),
                               suffixIcon: _isSearching
                                   ? IconButton(
                                       onPressed: _clearSearch,
-                                      icon: const Icon(Icons.clear, color: Colors.grey),
+                                      icon: const Icon(
+                                        Icons.clear,
+                                        color: Colors.grey,
+                                      ),
                                     )
                                   : null,
                               filled: true,
                               fillColor: Colors.white,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(vertical: 15),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 15,
+                              ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(30),
-                                borderSide: BorderSide(color: Colors.grey[300]!),
+                                borderSide: BorderSide(
+                                  color: Colors.grey[300]!,
+                                ),
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(30),
@@ -649,15 +719,61 @@ class _SearchScreenState extends State<SearchScreen> {
                         ),
                         const SizedBox(width: 15),
                         Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.green,
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.mic, color: Colors.white),
-                            onPressed: () {},
-                          ),
-                        )
+  decoration: const BoxDecoration(
+    color: Colors.green,
+    shape: BoxShape.circle,
+  ),
+  child: AnimatedBuilder(
+    animation: _animationController,
+    builder: (context, child) {
+      return Container(
+  // Effet d'onde : agrandissement léger du cercle si on écoute
+  padding: EdgeInsets.all(_isListening ? 4 * _animationController.value : 0),
+  decoration: BoxDecoration(
+    shape: BoxShape.circle,
+    color: _isListening 
+      ? Colors.white.withOpacity(0.3 * (1 - _animationController.value)) 
+      : Colors.transparent,
+  ),
+  child: IconButton(
+    icon: Icon(
+      _isSearching 
+          ? Icons.send 
+          : (_isListening ? Icons.graphic_eq : Icons.mic),
+      color: Colors.white,
+      // L'icône "bouge" légèrement si on écoute
+      size: _isListening ? 28 + (4 * _animationController.value) : 24,
+    ),
+    onPressed: () {
+      if (_isSearching) {
+        final value = _searchController.text.trim();
+        if (value.isNotEmpty) {
+          // Enregistre dans le service global et l'historique local
+          HistoryService.instance.add(value);
+          _addToHistory(value);
+          _applyFilter(value);
+          
+          setState(() {
+            _searchController.clear();
+            _isSearching = false;
+            _isListening = false; // Assure l'arrêt visuel
+          });
+          
+          _speech.stop(); // Arrête le matériel micro
+          _silenceTimer?.cancel();
+          FocusScope.of(context).unfocus(); // Ferme le clavier
+        }
+      } else {
+        // Déclenche la fonction de transcription complète
+        _listen();
+      }
+    },
+  ),
+);
+    },
+  ),
+),
+                        
                       ],
                     ),
                     const SizedBox(height: 30),
@@ -665,17 +781,49 @@ class _SearchScreenState extends State<SearchScreen> {
                       width: double.infinity,
                       height: 55,
                       child: ElevatedButton.icon(
-                        onPressed: () {},
-                        icon: const Icon(Icons.camera_alt_outlined, color: Colors.white),
-                        label: const Text('Scanner une ordonnance',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold)),
+                       onPressed: () async {
+  // Vérification de la permission caméra
+  var status = await Permission.camera.status;
+  
+  if (status.isGranted) {
+    // Si déjà autorisé, on va vers la page de scan
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ScannerPage()),
+    );
+  } else {
+    // Sinon on demande la permission
+    var result = await Permission.camera.request();
+    if (result.isGranted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const ScannerPage()),
+      );
+    } else {
+      // Si l'utilisateur refuse, on affiche un message
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("L'accès à la caméra est nécessaire pour le scan.")),
+      );
+    }
+  }
+},
+                        icon: const Icon(
+                          Icons.camera_alt_outlined,
+                          color: Colors.white,
+                        ),
+                        label: const Text(
+                          'Scanner une ordonnance',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.green[800],
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
                         ),
                       ),
                     ),
@@ -684,7 +832,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       _isSearching
                           ? 'Resultats trouves'
                           : 'Historique des recherches recentes',
-                      style: const TextStyle(color: Colors.black87, fontSize: 15),
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 15,
+                      ),
                     ),
                     const SizedBox(height: 10),
                     _isSearching
@@ -696,8 +847,9 @@ class _SearchScreenState extends State<SearchScreen> {
                               const Text(
                                 'Medicaments disponibles',
                                 style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               const SizedBox(height: 10),
                               _buildSearchResults(),
@@ -708,6 +860,93 @@ class _SearchScreenState extends State<SearchScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  // --- Historique de recherche ---
+  // Variables et méthodes pour stocker et afficher l'historique
+  List<String> _searchHistory = [];
+  static const String _kSearchHistoryKey = 'search_history';
+
+  Future<void> _loadSearchHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = prefs.getStringList(_kSearchHistoryKey) ?? [];
+      if (!mounted) return;
+      setState(() {
+        _searchHistory = list;
+      });
+    } catch (e) {
+      debugPrint('Erreur chargement historique: $e');
+    }
+  }
+
+  Future<void> _saveSearchHistory() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(_kSearchHistoryKey, _searchHistory);
+    } catch (e) {
+      debugPrint('Erreur sauvegarde historique: $e');
+    }
+  }
+
+  void _addToHistory(String term) {
+    final t = term.trim();
+    if (t.isEmpty) return;
+    setState(() {
+      _searchHistory.remove(t);
+      _searchHistory.insert(0, t);
+      if (_searchHistory.length > 10) {
+        _searchHistory = _searchHistory.sublist(0, 10);
+      }
+    });
+    _saveSearchHistory();
+  }
+
+  void _removeFromHistory(String term) {
+    setState(() {
+      _searchHistory.remove(term);
+    });
+    _saveSearchHistory();
+  }
+
+  void _clearHistory() {
+    setState(() {
+      _searchHistory.clear();
+    });
+    _saveSearchHistory();
+  }
+
+  Widget _buildHistoryList() {
+    if (_searchHistory.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Text('Aucun historique de recherche'),
+      );
+    }
+
+    return Column(
+      children: [
+        ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: _searchHistory.length,
+          separatorBuilder: (_, __) => const Divider(height: 1),
+          itemBuilder: (context, index) {
+            final term = _searchHistory[index];
+            return ListTile(
+              leading: const Icon(Icons.history, color: Colors.grey),
+              title: Text(term),
+              onTap: () {
+                _onRecentSearchSelected(term);
+                _addToHistory(term);
+              },
+              
+            );
+          },
+        ),
+        
+      ],
     );
   }
 }

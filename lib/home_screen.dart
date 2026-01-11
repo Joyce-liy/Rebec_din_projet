@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:pharma/pageconnection/login_screen.dart'; 
 import 'package:pharma/profil.dart'; 
 import 'package:pharma/search_screen.dart';
+import 'package:pharma/services/history_service.dart';
+import 'package:pharma/scanner_page.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final String userName;
@@ -13,36 +15,30 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-  late List<Widget> _pages;
-
-  @override
-  void initState() {
-    super.initState();
-    // CORRECTION : On initialise la liste avec exactement 5 pages pour correspondre aux 5 icônes
-    _pages = [
-      HomeBody(userName: widget.userName),        // Index 0
-      const SearchScreen(),                       // Index 1
-      const MapPage(),                            // Index 2
-      const ScannerPage(),                        // Index 3
-      SettingsScreen(userName: widget.userName),  // Index 4 : Ici on passe bien le nom
-    ];
-  }
 
   @override
   Widget build(BuildContext context) {
+    // Liste des pages de la navigation
+    final List<Widget> _pages = [
+      HomeBody(userName: widget.userName),        
+      const SearchScreen(),                       
+      const Center(child: Text('Map Page')),      
+      const Center(child: Text('Scanner Page')),   
+      SettingsScreen(userName: widget.userName),  
+    ];
+
     return Scaffold(
       backgroundColor: Colors.white,
-      body: _pages[_currentIndex],
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _pages,
+      ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         currentIndex: _currentIndex,
         selectedItemColor: Colors.green,
         unselectedItemColor: Colors.grey,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
+        onTap: (index) => setState(() => _currentIndex = index),
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Accueil"),
           BottomNavigationBarItem(icon: Icon(Icons.search), label: "Recherche"),
@@ -55,25 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class MapPage extends StatelessWidget {
-  const MapPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: Text('Map Page'));
-  }
-}
-
-class ScannerPage extends StatelessWidget {
-  const ScannerPage({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: Text('Scanner Page'));
-  }
-}
-
-// --- Le reste du code (HomeBody, etc.) reste identique ---
+// --- CORPS DE L'ACCUEIL ---
 
 class HomeBody extends StatefulWidget {
   final String userName;
@@ -85,100 +63,113 @@ class HomeBody extends StatefulWidget {
 
 class _HomeBodyState extends State<HomeBody> {
   String _selectedFilter = "All";
+  late Future<List<String>> _historyFuture;
 
-  final List<Map<String, dynamic>> _historyData = [
-    {"type": "Recherche", "icon": Icons.search, "title": "Paracetamol 500mg"},
-    {"type": "Recherche", "icon": Icons.search, "title": "Rephenax 400mg"},
-    {"type": "Scanner", "icon": Icons.qr_code_scanner, "title": "Ordonnance du 12/08/2025"},
-    {"type": "Scanner", "icon": Icons.qr_code_scanner, "title": "Ordonnance du 01/01/2025"},
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _historyFuture = _loadHistory();
+  }
 
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text("Déconnexion", textAlign: TextAlign.center),
-          content: const Text("Voulez-vous vraiment vous déconnecter ?", textAlign: TextAlign.center),
-          actionsAlignment: MainAxisAlignment.spaceEvenly,
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Annuler", style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              ),
-              onPressed: () {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const LoginScreen()),
-                  (Route<dynamic> route) => false,
-                );
-              },
-              child: const Text("Déconnecter", style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
-    );
+  // MÉTHODE CORRIGÉE : On récupère .value du ValueNotifier
+  Future<List<String>> _loadHistory() async {
+    await HistoryService.instance.load();
+    // history est un ValueNotifier, donc on retourne sa .value
+    return HistoryService.instance.history.value; 
+  }
+
+  Future<void> _handleRefresh() async {
+    setState(() {
+      _historyFuture = _loadHistory();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     String initial = widget.userName.isNotEmpty ? widget.userName[0].toUpperCase() : "J";
 
-    List<Map<String, dynamic>> filteredList = _historyData.where((item) {
-      if (_selectedFilter == "All") return true;
-      return item["type"] == _selectedFilter;
-    }).toList();
-
     return SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text("Hello, ${widget.userName}", style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-                GestureDetector(
-                  onTap: () => _showLogoutDialog(context),
-                  child: CircleAvatar(
-                    backgroundColor: const Color(0xFFE8F5E9),
-                    radius: 25,
-                    child: Text(initial, style: const TextStyle(fontSize: 20, color: Colors.green, fontWeight: FontWeight.bold)),
+      child: RefreshIndicator(
+        onRefresh: _handleRefresh,
+        color: Colors.green,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 20),
+              // En-tête
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text("Hello, ${widget.userName}", 
+                      style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis),
                   ),
+                  GestureDetector(
+                    onTap: () => _showLogoutDialog(context),
+                    child: CircleAvatar(
+                      backgroundColor: const Color(0xFFE8F5E9),
+                      radius: 25,
+                      child: Text(initial, style: const TextStyle(fontSize: 20, color: Colors.green, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 25),
+              // Filtres (Chips)
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _buildChip("All"),
+                    const SizedBox(width: 10),
+                    _buildChip("Recherche", icon: Icons.search),
+                    const SizedBox(width: 10),
+                    _buildChip("Scanner", icon: Icons.document_scanner),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 25),
-            Row(
-              children: [
-                _buildChip("All"),
-                const SizedBox(width: 10),
-                _buildChip("Recherche", icon: Icons.search),
-                const SizedBox(width: 10),
-                _buildChip("Scanner", icon: Icons.document_scanner),
-              ],
-            ),
-            const SizedBox(height: 30),
-            Text(
-              _selectedFilter == "All"
-                  ? "Historique des recherche et scans"
-                  : _selectedFilter == "Recherche"
-                      ? "Historique des recherches"
-                      : "Historique des scans",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            ...filteredList.map((item) => _buildHistoryItem(item["icon"], item["title"])).toList(),
-          ],
+              ),
+              const SizedBox(height: 30),
+              Text(
+                _selectedFilter == "All" ? "Historique récent" : "Historique $_selectedFilter",
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 15),
+
+              // Liste dynamique
+             // Remplacez le bloc FutureBuilder par celui-ci dans home_screen.dart
+ValueListenableBuilder<List<String>>(
+  valueListenable: HistoryService.instance.history,
+  builder: (context, historyList, child) {
+    // On applique le filtre si nécessaire
+    final filtered = historyList
+        .where((_) => _selectedFilter == "All" || _selectedFilter == "Recherche")
+        .toList();
+
+    if (filtered.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(20.0),
+          child: Text("Aucun historique disponible", style: TextStyle(color: Colors.grey)),
+        ),
+      );
+    }
+
+    // On affiche l'historique mis à jour en temps réel
+    return Column(
+      children: filtered.reversed
+          .map((term) => _buildHistoryItem(Icons.search, term))
+          .toList(),
+    );
+  },
+),
+              const SizedBox(height: 20),
+            ],
+          ),
         ),
       ),
     );
@@ -189,10 +180,10 @@ class _HomeBodyState extends State<HomeBody> {
     return GestureDetector(
       onTap: () => setState(() => _selectedFilter = label),
       child: Chip(
-        avatar: icon != null ? Icon(icon, size: 18, color: isSelected ? Colors.white : Colors.green) : null,
+        avatar: icon != null ? Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.green) : null,
         label: Text(label),
         backgroundColor: isSelected ? Colors.green : Colors.white,
-        labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black, fontWeight: FontWeight.bold),
+        labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
         side: const BorderSide(color: Colors.green),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
@@ -200,17 +191,39 @@ class _HomeBodyState extends State<HomeBody> {
   }
 
   Widget _buildHistoryItem(IconData icon, String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8)),
-            child: Icon(icon, size: 20, color: Colors.black54),
-          ),
+          Icon(icon, size: 20, color: Colors.green),
           const SizedBox(width: 15),
-          Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+          Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
+          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+        ],
+      ),
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Text("Déconnexion"),
+        content: const Text("Voulez-vous vraiment vous déconnecter ?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
+          TextButton(
+            onPressed: () => Navigator.pushAndRemoveUntil(
+              context, MaterialPageRoute(builder: (context) => const LoginScreen()), (r) => false),
+            child: const Text("Oui", style: TextStyle(color: Colors.red)),
+          ),
         ],
       ),
     );
