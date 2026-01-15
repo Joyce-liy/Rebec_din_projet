@@ -10,29 +10,33 @@ class ScannerPage extends StatefulWidget {
   State<ScannerPage> createState() => _ScannerPageState();
 }
 
-class _ScannerPageState extends State<ScannerPage> {
+class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStateMixin {
   CameraController? _controller;
   bool _isInitialized = false;
   bool _isProcessing = false;
   final TextRecognizer _textRecognizer = TextRecognizer();
+  late AnimationController _animationController;
   
-  // Liste dynamique des médicaments détectés
   List<Map<String, dynamic>> _detectedMeds = [];
 
   @override
   void initState() {
     super.initState();
     _initializeCamera();
+    // Animation pour le trait de scan qui descend
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 2),
+    )..repeat(reverse: true);
   }
 
-  // Initialisation de la caméra
   Future<void> _initializeCamera() async {
     final cameras = await availableCameras();
     if (cameras.isEmpty) return;
 
     _controller = CameraController(
       cameras[0], 
-      ResolutionPreset.high, 
+      ResolutionPreset.max, // Qualité max pour l'OCR
       enableAudio: false,
     );
 
@@ -45,7 +49,6 @@ class _ScannerPageState extends State<ScannerPage> {
     }
   }
 
-  // Fonction de Scan et OCR (Reconnaissance de texte)
   Future<void> _scanImage() async {
     if (_controller == null || !_controller!.value.isInitialized || _isProcessing) return;
 
@@ -61,13 +64,9 @@ class _ScannerPageState extends State<ScannerPage> {
       for (TextBlock block in recognizedText.blocks) {
         for (TextLine line in block.lines) {
           String text = line.text.trim();
-          
-          // Filtrage basique : on ignore les dates et les textes trop courts
-          if (text.length > 3 && !text.contains('/') && !text.contains('202')) {
-            tempMeds.add({
-              "name": text,
-              "selected": true, // Sélectionné par défaut comme sur l'image
-            });
+          // Filtrage intelligent
+          if (text.length > 3 && !RegExp(r'[0-9]{2}/').hasMatch(text)) {
+            tempMeds.add({"name": text, "selected": true});
           }
         }
       }
@@ -76,8 +75,11 @@ class _ScannerPageState extends State<ScannerPage> {
         _detectedMeds = tempMeds;
         _isProcessing = false;
       });
+
+      if (_detectedMeds.isNotEmpty) {
+        _showResultsSheet(); // Affiche les résultats de façon élégante
+      }
     } catch (e) {
-      debugPrint("Erreur scan: $e");
       setState(() => _isProcessing = false);
     }
   }
@@ -86,97 +88,68 @@ class _ScannerPageState extends State<ScannerPage> {
   void dispose() {
     _controller?.dispose();
     _textRecognizer.close();
+    _animationController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: const Text("Scan d'ordonnance", style: TextStyle(color: Colors.black)),
-      ),
-      body: Column(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
         children: [
-          // ZONE CAMÉRA
-          Expanded(
-            flex: 5,
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                if (_isInitialized) 
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(20),
-                    child: CameraPreview(_controller!),
-                  )
-                else 
-                  const Center(child: CircularProgressIndicator()),
-                
-                // L'Overlay bleu (Cadre de scan)
-                _buildScanOverlay(),
+          // APERÇU CAMÉRA PLEIN ÉCRAN
+          if (_isInitialized) 
+            CameraPreview(_controller!)
+          else 
+            const Center(child: CircularProgressIndicator(color: Colors.green)),
 
-                // Bouton de capture
-                Positioned(
-                  bottom: 20,
-                  child: FloatingActionButton(
-                    backgroundColor: Colors.white,
-                    onPressed: _scanImage,
-                    child: _isProcessing 
-                      ? const CircularProgressIndicator() 
-                      : const Icon(Icons.camera_alt, color: Colors.blue, size: 30),
-                  ),
-                ),
-              ],
+          // VISEUR ET OVERLAY
+          _buildSmartOverlay(),
+
+          // BOUTON RETOUR
+          Positioned(
+            top: 50,
+            left: 20,
+            child: CircleAvatar(
+              backgroundColor: Colors.black26,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
             ),
           ),
 
-          // LISTE DES RÉSULTATS
-          Expanded(
-            flex: 4,
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Médicaments détectés",
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 15),
-                  Expanded(
-                    child: _detectedMeds.isEmpty 
-                      ? const Center(child: Text("Prenez une photo de l'ordonnance"))
-                      : ListView.builder(
-                          itemCount: _detectedMeds.length,
-                          itemBuilder: (context, index) => _buildMedItem(index),
-                        ),
-                  ),
-                  
-                  // BOUTON DE VALIDATION
-                  if (_detectedMeds.isNotEmpty)
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: ElevatedButton(
-                        onPressed: _confirmAndSearch,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF3B82F6),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-                        ),
-                        child: const Text(
-                          "Recherche les disponibilités",
-                          style: TextStyle(color: Colors.white, fontSize: 16),
-                        ),
-                      ),
+          // BOUTON DE CAPTURE
+          Positioned(
+            bottom: 60,
+            left: 0,
+            right: 0,
+            child: Column(
+              children: [
+                const Text("Alignez l'ordonnance dans le cadre", 
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: _scanImage,
+                  child: Container(
+                    height: 80,
+                    width: 80,
+                    padding: const EdgeInsets.all(5),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
                     ),
-                ],
-              ),
+                    child: Container(
+                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                      child: _isProcessing 
+                        ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Colors.green))
+                        : const Icon(Icons.qr_code_scanner, size: 40, color: Colors.green),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -184,43 +157,111 @@ class _ScannerPageState extends State<ScannerPage> {
     );
   }
 
-  Widget _buildScanOverlay() {
-    return Container(
-      width: MediaQuery.of(context).size.width * 0.8,
-      height: 300,
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.blueAccent.withOpacity(0.5), width: 2),
-        borderRadius: BorderRadius.circular(20),
-      ),
+  Widget _buildSmartOverlay() {
+    return AnimatedBuilder(
+      animation: _animationController,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            // Fond semi-transparent avec trou au milieu (Viseur)
+            ColorFiltered(
+              colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.5), BlendMode.srcOut),
+              child: Stack(
+                children: [
+                  Container(decoration: const BoxDecoration(color: Colors.black, backgroundBlendMode: BlendMode.dstOut)),
+                  Align(
+                    alignment: Alignment.center,
+                    child: Container(
+                      width: MediaQuery.of(context).size.width * 0.85,
+                      height: 400,
+                      decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Barre de scan animée
+            Align(
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.85,
+                height: 400,
+                child: Stack(
+                  children: [
+                    Positioned(
+                      top: _animationController.value * 380,
+                      left: 10,
+                      right: 10,
+                      child: Container(
+                        height: 2,
+                        decoration: BoxDecoration(
+                          boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.5), blurRadius: 10, spreadRadius: 2)],
+                          gradient: const LinearGradient(colors: [Colors.transparent, Colors.green, Colors.transparent]),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildMedItem(int index) {
-    bool isSelected = _detectedMeds[index]['selected'];
-    return ListTile(
-      leading: GestureDetector(
-        onTap: () => setState(() => _detectedMeds[index]['selected'] = !isSelected),
-        child: Container(
-          padding: const EdgeInsets.all(2),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.blue : Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.blue, width: 2),
+  void _showResultsSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => Container(
+          height: MediaQuery.of(context).size.height * 0.6,
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
           ),
-          child: const Icon(Icons.check, size: 18, color: Colors.white),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
+              const SizedBox(height: 20),
+              const Text("Médicaments identifiés", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              const Text("Décochez ceux que vous ne cherchez pas", style: TextStyle(color: Colors.grey)),
+              const SizedBox(height: 20),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: _detectedMeds.length,
+                  itemBuilder: (context, i) => CheckboxListTile(
+                    activeColor: Colors.green,
+                    title: Text(_detectedMeds[i]['name'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                    value: _detectedMeds[i]['selected'],
+                    onChanged: (val) => setSheetState(() => _detectedMeds[i]['selected'] = val),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                  onPressed: () {
+                    for (var med in _detectedMeds) {
+                      if (med['selected']) HistoryService.instance.add(med['name'], source: "Scanner");
+                    }
+                    Navigator.pop(context); // Ferme le sheet
+                    Navigator.pop(context); // Quitte le scanner
+                  },
+                  child: const Text("VÉRIFIER LE STOCK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
-      title: Text(_detectedMeds[index]['name']),
     );
-  }
-
-  void _confirmAndSearch() {
-  for (var med in _detectedMeds) {
-  if (med['selected']) {
-    HistoryService.instance.add(med['name'], source: "Scanner");
-  }
-}
-    // Retour à l'écran précédent
-    Navigator.pop(context);
   }
 }

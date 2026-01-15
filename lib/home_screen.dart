@@ -18,38 +18,45 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Liste des pages de la navigation
     final List<Widget> _pages = [
       HomeBody(userName: widget.userName),        
       const SearchScreen(),                                             
-      const ScannerPage(), // Cette page s'affichera quand on clique sur l'index 2 (Scanner)
+      const ScannerPage(), 
       SettingsScreen(userName: widget.userName),  
     ];
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8FAF8), // Fond légèrement teinté pour faire ressortir les cartes
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: _currentIndex,
-        selectedItemColor: Colors.green,
-        unselectedItemColor: Colors.grey,
-        onTap: (index) => setState(() => _currentIndex = index),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.home_outlined), label: "Accueil"),
-          BottomNavigationBarItem(icon: Icon(Icons.search), label: "Recherche"),
-          BottomNavigationBarItem(icon: Icon(Icons.document_scanner_outlined), label: "Scanner"),
-          BottomNavigationBarItem(icon: Icon(Icons.person_outline), label: "Profil"),
-        ],
+      bottomNavigationBar: Container(
+        decoration: BoxDecoration(
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, spreadRadius: 2),
+          ],
+        ),
+        child: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          currentIndex: _currentIndex,
+          selectedItemColor: Colors.green.shade700,
+          unselectedItemColor: Colors.grey.shade400,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+          elevation: 0,
+          backgroundColor: Colors.white,
+          onTap: (index) => setState(() => _currentIndex = index),
+          items: const [
+            BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Accueil"),
+            BottomNavigationBarItem(icon: Icon(Icons.search_rounded), label: "Recherche"),
+            BottomNavigationBarItem(icon: Icon(Icons.document_scanner_rounded), label: "Scanner"),
+            BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Profil"),
+          ],
+        ),
       ),
     );
   }
 }
-
-// --- CORPS DE L'ACCUEIL ---
 
 class HomeBody extends StatefulWidget {
   final String userName;
@@ -68,127 +75,204 @@ class _HomeBodyState extends State<HomeBody> {
 
     return SafeArea(
       child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 20),
-            // En-tête (Hello...)
+            const SizedBox(height: 25),
+            // En-tête amélioré
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Expanded(
-                  child: Text("Hello, ${widget.userName}", 
-                    style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold),
-                    overflow: TextOverflow.ellipsis),
-                ),
-                GestureDetector(
-                  onTap: () => _showLogoutDialog(context),
-                  child: CircleAvatar(
-                    backgroundColor: const Color(0xFFE8F5E9),
-                    radius: 25,
-                    child: Text(initial, style: const TextStyle(fontSize: 20, color: Colors.green, fontWeight: FontWeight.bold)),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Bonjour,", 
+                        style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+                      Text(widget.userName, 
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+                    ],
                   ),
                 ),
+                _buildAvatar(initial),
               ],
             ),
             
-            const SizedBox(height: 25),
-            // FILTRES (All, Recherche, Scanner)
+            const SizedBox(height: 30),
+            // Zone de recherche visuelle (incitation)
+            _buildSearchPrompt(),
+
+            const SizedBox(height: 30),
+            // Section Filtres
+            const Text("Filtrer par", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54)),
+            const SizedBox(height: 12),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
               child: Row(
                 children: [
-                  _buildChip("All"),
-                  const SizedBox(width: 10),
-                  _buildChip("Recherche", icon: Icons.search),
-                  const SizedBox(width: 10),
-                  _buildChip("Scanner", icon: Icons.document_scanner),
+                  _buildChip("All", Icons.apps_rounded),
+                  const SizedBox(width: 12),
+                  _buildChip("Recherche", Icons.search_rounded),
+                  const SizedBox(width: 12),
+                  _buildChip("Scanner", Icons.qr_code_scanner_rounded),
                 ],
               ),
             ),
-            const SizedBox(height: 30),
-            Text(
-              _selectedFilter == "All" ? "Historique récent" : "Historique $_selectedFilter",
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 15),
 
-            // LISTE DYNAMIQUE FILTRÉE
+            const SizedBox(height: 35),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _selectedFilter == "All" ? "Historique récent" : "Résultats $_selectedFilter",
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+                TextButton(
+                  onPressed: () => HistoryService.instance.clear(),
+                  child: const Text("Effacer", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                )
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // Liste d'historique avec animation de chargement
             ValueListenableBuilder<List<String>>(
               valueListenable: HistoryService.instance.history,
               builder: (context, historyList, child) {
-                
-                // LOGIQUE DE FILTRE CORRIGÉE
                 final filtered = historyList.where((item) {
                   if (_selectedFilter == "All") return true;
-                  // On vérifie si l'item commence par la source (Recherche: ou Scanner:)
                   return item.startsWith(_selectedFilter);
                 }).toList();
 
                 if (filtered.isEmpty) {
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(20.0),
-                      child: Text("Aucun historique disponible", style: TextStyle(color: Colors.grey)),
-                    ),
-                  );
+                  return _buildEmptyState();
                 }
 
-                return Column(
-                  children: filtered.map((entry) {
-                    // On sépare la source du nom pour l'affichage
-                    // Exemple: "Scanner:Doliprane" -> parts[0]="Scanner", parts[1]="Doliprane"
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final entry = filtered[index];
                     final parts = entry.split(':');
                     final source = parts[0];
                     final name = parts.length > 1 ? parts[1] : parts[0];
                     
                     IconData itemIcon = (source == "Scanner") 
-                        ? Icons.document_scanner 
-                        : Icons.search;
+                        ? Icons.document_scanner_outlined 
+                        : Icons.history_rounded;
 
-                    return _buildHistoryItem(itemIcon, name);
-                  }).toList(),
+                    return _buildHistoryItem(itemIcon, name, source);
+                  },
                 );
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildChip(String label, {IconData? icon}) {
-    bool isSelected = _selectedFilter == label;
+  Widget _buildAvatar(String initial) {
     return GestureDetector(
-      onTap: () => setState(() => _selectedFilter = label),
-      child: Chip(
-        avatar: icon != null ? Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.green) : null,
-        label: Text(label),
-        backgroundColor: isSelected ? Colors.green : Colors.white,
-        labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black),
-        side: const BorderSide(color: Colors.green),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      onTap: () => _showLogoutDialog(context),
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(color: Colors.green.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4)),
+          ],
+        ),
+        child: CircleAvatar(
+          backgroundColor: Colors.green.shade600,
+          radius: 26,
+          child: Text(initial, style: const TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
       ),
     );
   }
 
-  Widget _buildHistoryItem(IconData icon, String title) {
+  Widget _buildSearchPrompt() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
+        gradient: LinearGradient(colors: [Colors.green.shade600, Colors.green.shade400]),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 20, color: Colors.green),
-          const SizedBox(width: 15),
-          Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500))),
-          const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Besoin d'un remède ?", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                SizedBox(height: 5),
+                Text("Scannez votre ordonnance ou tapez le nom du médicament.", 
+                  style: TextStyle(color: Colors.white70, fontSize: 13)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Icon(Icons.medication_liquid_rounded, size: 40, color: Colors.white.withOpacity(0.5)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(String label, IconData icon) {
+    bool isSelected = _selectedFilter == label;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedFilter = label),
+        child: Chip(
+          avatar: Icon(icon, size: 18, color: isSelected ? Colors.white : Colors.green.shade700),
+          label: Text(label, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+          backgroundColor: isSelected ? Colors.green.shade600 : Colors.white,
+          labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black87),
+          elevation: isSelected ? 4 : 0,
+          side: BorderSide(color: isSelected ? Colors.transparent : Colors.grey.shade200),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryItem(IconData icon, String title, String source) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+          child: Icon(icon, size: 22, color: Colors.green.shade700),
+        ),
+        title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        subtitle: Text("Via $source", style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+        trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey.shade400),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        children: [
+          const SizedBox(height: 40),
+          Icon(Icons.history_rounded, size: 60, color: Colors.grey.shade200),
+          const SizedBox(height: 10),
+          const Text("Aucun historique pour le moment", style: TextStyle(color: Colors.grey, fontSize: 14)),
         ],
       ),
     );
@@ -198,15 +282,19 @@ class _HomeBodyState extends State<HomeBody> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Déconnexion"),
-        content: const Text("Voulez-vous vraiment vous déconnecter ?"),
+        content: const Text("Êtes-vous sûr de vouloir quitter votre session ?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          TextButton(
-            onPressed: () => Navigator.pushAndRemoveUntil(
-              context, MaterialPageRoute(builder: (context) => const LoginScreen()), (r) => false),
-            child: const Text("Oui", style: TextStyle(color: Colors.red)),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text("Annuler", style: TextStyle(color: Colors.grey.shade600))),
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            child: ElevatedButton(
+              onPressed: () => Navigator.pushAndRemoveUntil(
+                context, MaterialPageRoute(builder: (context) => const LoginScreen()), (r) => false),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              child: const Text("Déconnexion", style: TextStyle(color: Colors.white)),
+            ),
           ),
         ],
       ),
