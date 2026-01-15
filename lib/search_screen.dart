@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:pharma/profil.dart';
 import 'package:pharma/map/medication_map_page.dart';
 import 'package:pharma/models/pharmacy.dart';
+import 'package:pharma/scanner_page.dart';
 import 'package:pharma/services/location_service.dart';
 import 'package:pharma/services/pharmacy_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pharma/services/history_service.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'dart:async';
+import 'package:permission_handler/permission_handler.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -13,9 +19,13 @@ class SearchScreen extends StatefulWidget {
   @override
   _SearchScreenState createState() => _SearchScreenState();
 }
-
-class _SearchScreenState extends State<SearchScreen> {
+class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderStateMixin{
   static const double _radiusMeters = 5000;
+  late stt.SpeechToText _speech;
+  late AnimationController _animationController;
+  Timer? _silenceTimer;
+  bool _isListening = false;
+  //bool _isListening = false;
   final PharmacyService _pharmacyService = PharmacyService();
   final LocationService _locationService = LocationService();
   final TextEditingController _searchController = TextEditingController();
@@ -28,28 +38,68 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _locationUnavailable = false;
   GeoPoint? _userLocation;
 
-  // Liste pour l'historique
-  final List<String> recentSearches = [
-    'Doliprane',
-    'Efferalgan',
-    'Nurofen',
-    'Aspegic',
-    'Spasfon',
-    'Gaviscon',
-    'Maalox',
-  ];
-
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
+    _loadSearchHistory();
     _initialize();
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _animationController.dispose();
+    _silenceTimer?.cancel();
     super.dispose();
   }
+  void _startSilenceTimer() {
+    _silenceTimer?.cancel();
+    _silenceTimer = Timer(const Duration(seconds: 5), () {
+      if (_isListening) {
+        _stopListening();
+      }
+    });
+  }
+  void _listen() async {
+  if (!_isListening) {
+    // Initialisation du micro
+    bool available = await _speech.initialize(
+      onStatus: (val) => print('Statut: $val'),
+      onError: (val) => print('Erreur: $val'),
+    );
+
+    if (available) {
+      setState(() => _isListening = true);
+      _startSilenceTimer(); // Lance le chrono de 5s
+
+      _speech.listen(
+        onResult: (val) {
+          setState(() {
+            _searchController.text = val.recognizedWords;
+            // Si on détecte du texte, on prépare l'icône "Envoyer"
+            if (val.recognizedWords.trim().isNotEmpty) {
+              _isSearching = true;
+            }
+          });
+          // On réinitialise le chrono à chaque mot capté
+          _startSilenceTimer();
+        },
+      );
+    }
+  } else {
+    _stopListening();
+  }
+}
+
+void _stopListening() {
+  _speech.stop();
+  _silenceTimer?.cancel();
+  setState(() => _isListening = false);
+}
+
 
   Future<void> _initialize() async {
     setState(() {
@@ -88,8 +138,10 @@ class _SearchScreenState extends State<SearchScreen> {
         _locationUnavailable = true;
       });
     }
-  }
+  _speech = stt.SpeechToText();
+}
 
+// Fonction pour démarrer/arrêter l'écoute
   Future<void> _refreshLocation() async {
     setState(() {
       _loadingLocation = true;
@@ -124,9 +176,11 @@ class _SearchScreenState extends State<SearchScreen> {
       } else {
         final lower = query.toLowerCase();
         _filtered = _catalog
-            .where((entry) =>
-                entry.nom.toLowerCase().contains(lower) ||
-                entry.dosage.toLowerCase().contains(lower))
+            .where(
+              (entry) =>
+                  entry.nom.toLowerCase().contains(lower) ||
+                  entry.dosage.toLowerCase().contains(lower),
+            )
             .toList();
       }
     });
@@ -150,16 +204,20 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   StockStatus? _aggregateStatusFromList(
-      List<MedicationAvailability> availabilities) {
+    List<MedicationAvailability> availabilities,
+  ) {
     if (availabilities.isEmpty) {
       return null;
     }
     if (availabilities.any(
-        (availability) => availability.medication.status == StockStatus.enStock)) {
+      (availability) => availability.medication.status == StockStatus.enStock,
+    )) {
       return StockStatus.enStock;
     }
-    if (availabilities.any((availability) =>
-        availability.medication.status == StockStatus.stockLimite)) {
+    if (availabilities.any(
+      (availability) =>
+          availability.medication.status == StockStatus.stockLimite,
+    )) {
       return StockStatus.stockLimite;
     }
     return StockStatus.rupture;
@@ -221,11 +279,8 @@ class _SearchScreenState extends State<SearchScreen> {
       return availabilities;
     }
     final GeoPoint location = _userLocation!;
-    final List<MedicationAvailability> filtered = availabilities.where((availability) {
-      final point = availability.pharmacy.localisation;
-      if (point == null) {
-        return false;
-      }
+    final List<MedicationAvailability> filtered = availabilities
+        .where((availability) {
       final distance = GeoUtils.haversineDistance(
         startLat: location.latitude,
         startLng: location.longitude,
@@ -265,26 +320,17 @@ class _SearchScreenState extends State<SearchScreen> {
   void _openMap(MedicationCatalogEntry entry) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => MedicationMapPage(
-          entry: entry,
-          initialUserLocation: _userLocation,
-        ),
+        builder: (context) =>
+            MedicationMapPage(entry: entry, initialUserLocation: _userLocation),
       ),
     );
   }
 
   Future<void> _openDirections(Pharmacy pharmacy) async {
-    final point = pharmacy.localisation;
-    if (point == null) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Localisation indisponible pour cette pharmacie.')),
-      );
-      return;
-    }
-
     final Uri url = Uri.parse(
         'https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}&travelmode=driving');
+      'https://www.google.com/maps/dir/?api=1&destination=${pharmacy.latitude},${pharmacy.longitude}&travelmode=driving',
+    );
     final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -307,10 +353,7 @@ class _SearchScreenState extends State<SearchScreen> {
           Container(
             width: 8,
             height: 8,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 6),
           Text(
@@ -339,9 +382,7 @@ class _SearchScreenState extends State<SearchScreen> {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
             SizedBox(width: 12),
-            Expanded(
-              child: Text('Localisation en cours...'),
-            ),
+            Expanded(child: Text('Localisation en cours...')),
           ],
         ),
       );
@@ -393,25 +434,20 @@ class _SearchScreenState extends State<SearchScreen> {
                   : 'Activez votre localisation pour un tri par distance.',
             ),
           ),
-          TextButton(
-            onPressed: _refreshLocation,
-            child: const Text('Activer'),
-          ),
+          TextButton(onPressed: _refreshLocation, child: const Text('Activer')),
         ],
       ),
     );
   }
 
   Widget _buildAvailabilityTiles(
-      MedicationCatalogEntry entry,
-      List<MedicationAvailability> availabilities,
-      ) {
+    MedicationCatalogEntry entry,
+    List<MedicationAvailability> availabilities,
+  ) {
     if (availabilities.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Text(
-          'Aucune officine n\'a ete trouvee dans un rayon de 5 km.',
-        ),
+        child: Text('Aucune officine n\'a ete trouvee dans un rayon de 5 km.'),
       );
     }
 
@@ -423,8 +459,10 @@ class _SearchScreenState extends State<SearchScreen> {
         final status = medication.status;
 
         return ListTile(
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 6,
+          ),
           leading: Icon(Icons.local_pharmacy, color: _statusColor(status)),
           title: Text(
             pharmacy.nom,
@@ -433,7 +471,7 @@ class _SearchScreenState extends State<SearchScreen> {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(pharmacy.adresse ?? 'Adresse indisponible'),
+              Text(pharmacy.quartier),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 12,
@@ -441,14 +479,19 @@ class _SearchScreenState extends State<SearchScreen> {
                 children: [
                   _buildStatusBadge(status),
                   if (medication.quantite > 0)
-                    Text('Qté: ${medication.quantite}',
-                        style: const TextStyle(fontWeight: FontWeight.w500)),
+                    Text(
+                      'Qté: ${medication.quantite}',
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                    ),
                   if (distance != null)
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.directions_walk,
-                            size: 16, color: Colors.grey),
+                        const Icon(
+                          Icons.directions_walk,
+                          size: 16,
+                          color: Colors.grey,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           _formatDistance(distance),
@@ -503,11 +546,14 @@ class _SearchScreenState extends State<SearchScreen> {
 
         return Card(
           elevation: 2,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: ExpansionTile(
-            tilePadding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            tilePadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
             leading: Container(
               width: 12,
               decoration: BoxDecoration(
@@ -540,8 +586,10 @@ class _SearchScreenState extends State<SearchScreen> {
               if (availabilities.isNotEmpty)
                 _buildAvailabilityTiles(entry, availabilities),
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 child: SizedBox(
                   width: double.infinity,
                   child: ElevatedButton.icon(
@@ -562,23 +610,6 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildHistoryList() {
-    return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: recentSearches.length,
-      separatorBuilder: (context, index) => const Divider(height: 1),
-      itemBuilder: (context, index) => ListTile(
-        contentPadding: EdgeInsets.zero,
-        title:
-            Text(recentSearches[index], style: const TextStyle(fontSize: 16)),
-        trailing:
-            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.black),
-        onTap: () => _onRecentSearchSelected(recentSearches[index]),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -592,7 +623,11 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.account_circle, color: Colors.black, size: 30),
+            icon: const Icon(
+              Icons.account_circle,
+              color: Colors.black,
+              size: 30,
+            ),
             onPressed: () {
               Navigator.pushReplacement(
                 context,
@@ -622,9 +657,13 @@ class _SearchScreenState extends State<SearchScreen> {
                   children: [
                     const SizedBox(height: 20),
                     const Center(
-                      child: Text('La Recherche',
-                          style:
-                              TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      child: Text(
+                        'La Recherche',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                     const SizedBox(height: 16),
                     _buildLocationBanner(),
@@ -633,7 +672,10 @@ class _SearchScreenState extends State<SearchScreen> {
                       child: Text(
                         'Bonjour, quel medicament recherchez-vous?',
                         textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -643,24 +685,37 @@ class _SearchScreenState extends State<SearchScreen> {
                           child: TextField(
                             controller: _searchController,
                             onChanged: _onQueryChanged,
+                            onSubmitted: (value) {
+                              HistoryService.instance.add(value);
+                              _applyFilter(value);
+                            },
                             decoration: InputDecoration(
                               hintText: 'Rechercher un medicament',
                               hintStyle: TextStyle(color: Colors.grey[400]),
-                              prefixIcon: const Icon(Icons.search,
-                                  color: Colors.green, size: 30),
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Colors.green,
+                                size: 30,
+                              ),
                               suffixIcon: _isSearching
                                   ? IconButton(
                                       onPressed: _clearSearch,
-                                      icon: const Icon(Icons.clear, color: Colors.grey),
+                                      icon: const Icon(
+                                        Icons.clear,
+                                        color: Colors.grey,
+                                      ),
                                     )
                                   : null,
                               filled: true,
                               fillColor: Colors.white,
-                              contentPadding:
-                                  const EdgeInsets.symmetric(vertical: 15),
+                              contentPadding: const EdgeInsets.symmetric(
+                                vertical: 15,
+                              ),
                               enabledBorder: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(30),
-                                borderSide: BorderSide(color: Colors.grey[300]!),
+                                borderSide: BorderSide(
+                                  color: Colors.grey[300]!,
+                                ),
                               ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(30),

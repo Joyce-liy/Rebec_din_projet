@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 class EditProfileScreen extends StatefulWidget {
   final String currentName;
 
-  // Le constructeur demande le nom actuel pour l'afficher dans le champ
   const EditProfileScreen({super.key, required this.currentName});
 
   @override
@@ -16,13 +15,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    // Initialise le champ de texte avec le nom actuel
     _nameController = TextEditingController(text: widget.currentName);
   }
 
   @override
   void dispose() {
-    // Toujours libérer le contrôleur pour éviter les fuites de mémoire
     _nameController.dispose();
     super.dispose();
   }
@@ -30,70 +27,138 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8FAF8), // Fond gris très clair "Pro"
       appBar: AppBar(
-        title: const Text("Modifier le profil"),
-        backgroundColor: Colors.green,
-        foregroundColor: Colors.white,
+        title: const Text("Profil", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              "Nom d'utilisateur",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            const SizedBox(height: 20),
+            
+            // --- SECTION AVATAR ---
+            Center(
+              child: Stack(
+                children: [
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 4),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 5))
+                      ],
+                      image: const DecorationImage(
+                        image: NetworkImage("https://i.pravatar.cc/300"), // Image exemple
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
+                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+            const SizedBox(height: 40),
+
+            // --- CHAMP NOM D'UTILISATEUR ---
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Nom d'utilisateur",
+                style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600, fontSize: 14),
+              ),
             ),
             const SizedBox(height: 10),
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                hintText: "Entrez votre nouveau nom",
-                prefixIcon: const Icon(Icons.person_outline, color: Colors.green),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Colors.green, width: 2),
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))
+                ],
+              ),
+              child: TextField(
+                controller: _nameController,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  hintText: "Votre nom",
+                  prefixIcon: const Icon(Icons.person_rounded, color: Colors.green),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 18),
                 ),
               ),
             ),
-            const SizedBox(height: 30),
-            ElevatedButton(
-              onPressed: () {
-                String newName = _nameController.text.trim();
-                
-                if (newName.isNotEmpty) {
-                  // Renvoie le nouveau nom à la page précédente (SettingsScreen)
-                  Navigator.pop(context, newName);
-                } else {
-                  // Affiche une erreur si le champ est vide
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Le nom ne peut pas être vide")),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green,
-                minimumSize: const Size(double.infinity, 55),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+
+            const SizedBox(height: 40),
+
+            // --- BOUTON ENREGISTRER ---
+            Container(
+              width: double.infinity,
+              height: 58,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                gradient: LinearGradient(
+                  colors: [Colors.green.shade700, Colors.green.shade500],
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.green.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 6),
+                  )
+                ],
               ),
-              child: const Text(
-                "ENREGISTRER",
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+              child: ElevatedButton(
+                onPressed: () {
+                  String newName = _nameController.text.trim();
+                  if (newName.isNotEmpty) {
+                    Navigator.pop(context, newName);
+                  } else {
+                    _showErrorSnackBar(context);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                ),
+                child: const Text(
+                  "Enregistrer les modifications",
+                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  void _showErrorSnackBar(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text("Le nom ne peut pas être vide"),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }

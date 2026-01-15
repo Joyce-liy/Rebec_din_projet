@@ -46,7 +46,7 @@ class _SplashScreenState extends State<SplashScreen> {
             
             // 3. Texte ou Logo de l'application
             const Text(
-              "PHARMA",
+              "PHARM",
               style: TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.bold,
