@@ -180,14 +180,15 @@ class _SearchScreenState extends State<SearchScreen> {
 
   double? _distanceToPharmacy(Pharmacy pharmacy) {
     final location = _userLocation;
-    if (location == null) {
+    final point = pharmacy.localisation;
+    if (location == null || point == null) {
       return null;
     }
     return GeoUtils.haversineDistance(
       startLat: location.latitude,
       startLng: location.longitude,
-      endLat: pharmacy.latitude,
-      endLng: pharmacy.longitude,
+      endLat: point.latitude,
+      endLng: point.longitude,
     );
   }
 
@@ -220,30 +221,41 @@ class _SearchScreenState extends State<SearchScreen> {
       return availabilities;
     }
     final GeoPoint location = _userLocation!;
-    final List<MedicationAvailability> filtered = availabilities
-        .where((availability) {
+    final List<MedicationAvailability> filtered = availabilities.where((availability) {
+      final point = availability.pharmacy.localisation;
+      if (point == null) {
+        return false;
+      }
       final distance = GeoUtils.haversineDistance(
         startLat: location.latitude,
         startLng: location.longitude,
-        endLat: availability.pharmacy.latitude,
-        endLng: availability.pharmacy.longitude,
+        endLat: point.latitude,
+        endLng: point.longitude,
       );
       return distance <= _radiusMeters;
     }).toList();
 
     filtered.sort((a, b) {
-      final distanceA = GeoUtils.haversineDistance(
-        startLat: location.latitude,
-        startLng: location.longitude,
-        endLat: a.pharmacy.latitude,
-        endLng: a.pharmacy.longitude,
-      );
-      final distanceB = GeoUtils.haversineDistance(
-        startLat: location.latitude,
-        startLng: location.longitude,
-        endLat: b.pharmacy.latitude,
-        endLng: b.pharmacy.longitude,
-      );
+      double distanceA = double.infinity;
+      double distanceB = double.infinity;
+      final pointA = a.pharmacy.localisation;
+      final pointB = b.pharmacy.localisation;
+      if (pointA != null) {
+        distanceA = GeoUtils.haversineDistance(
+          startLat: location.latitude,
+          startLng: location.longitude,
+          endLat: pointA.latitude,
+          endLng: pointA.longitude,
+        );
+      }
+      if (pointB != null) {
+        distanceB = GeoUtils.haversineDistance(
+          startLat: location.latitude,
+          startLng: location.longitude,
+          endLat: pointB.latitude,
+          endLng: pointB.longitude,
+        );
+      }
       return distanceA.compareTo(distanceB);
     });
 
@@ -262,8 +274,17 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   Future<void> _openDirections(Pharmacy pharmacy) async {
+    final point = pharmacy.localisation;
+    if (point == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Localisation indisponible pour cette pharmacie.')),
+      );
+      return;
+    }
+
     final Uri url = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=${pharmacy.latitude},${pharmacy.longitude}&travelmode=driving');
+        'https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}&travelmode=driving');
     final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -412,7 +433,7 @@ class _SearchScreenState extends State<SearchScreen> {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(pharmacy.quartier),
+              Text(pharmacy.adresse ?? 'Adresse indisponible'),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 12,
