@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:pharma/pageconnection/login_screen.dart'; // Vérifiez que ce chemin est correct
 
 class EditProfileScreen extends StatefulWidget {
   final String currentName;
@@ -24,10 +27,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
+  // --- FONCTION DE DÉCONNEXION ---
+  Future<void> _handleLogout() async {
+    final prefs = await SharedPreferences.getInstance();
+    final GoogleSignIn googleSignIn = GoogleSignIn();
+
+    // 1. Effacer les données locales
+    await prefs.clear(); 
+    
+    // 2. Déconnecter Google
+    try {
+      await googleSignIn.signOut();
+    } catch (e) {
+      print("Erreur lors de la déconnexion Google: $e");
+    }
+
+    // 3. Rediriger vers l'écran de connexion
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (route) => false, // Supprime tout l'historique de navigation
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8), // Fond gris très clair "Pro"
+      backgroundColor: const Color(0xFFF8FAF8), 
       appBar: AppBar(
         title: const Text("Profil", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
         centerTitle: true,
@@ -58,7 +85,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 5))
                       ],
                       image: const DecorationImage(
-                        image: NetworkImage("https://i.pravatar.cc/300"), // Image exemple
+                        image: NetworkImage("https://i.pravatar.cc/300"),
                         fit: BoxFit.cover,
                       ),
                     ),
@@ -98,11 +125,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               child: TextField(
                 controller: _nameController,
                 style: const TextStyle(fontWeight: FontWeight.bold),
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   hintText: "Votre nom",
-                  prefixIcon: const Icon(Icons.person_rounded, color: Colors.green),
+                  prefixIcon: Icon(Icons.person_rounded, color: Colors.green),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 18),
+                  contentPadding: EdgeInsets.symmetric(vertical: 18),
                 ),
               ),
             ),
@@ -146,6 +173,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
               ),
             ),
+
+            const SizedBox(height: 30),
+
+            // --- BOUTON DÉCONNEXION (AJOUTÉ) ---
+            const Divider(),
+            const SizedBox(height: 10),
+            TextButton.icon(
+              onPressed: _handleLogout,
+              icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+              label: const Text(
+                "Se déconnecter de l'application",
+                style: TextStyle(
+                  color: Colors.redAccent, 
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
           ],
         ),
       ),

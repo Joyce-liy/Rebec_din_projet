@@ -1,12 +1,12 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // AJOUTÉ
+import 'package:google_sign_in/google_sign_in.dart'; // AJOUTÉ
 import 'package:pharma/pageconnection/login_screen.dart'; 
 import 'package:pharma/profil.dart'; 
 import 'package:pharma/search_screen.dart';
 import 'package:pharma/services/history_service.dart';
 import 'package:pharma/scanner_page.dart'; 
-
-// L'importation pointe vers votre fichier avec le micro et Gemini
 import 'package:pharma/chat_ai_screen.dart'; 
 
 class HomeScreen extends StatefulWidget {
@@ -22,7 +22,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Les pages de la barre de navigation
     final List<Widget> _pages = [
       HomeBody(userName: widget.userName),        
       const SearchScreen(),                                
@@ -37,7 +36,6 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _currentIndex,
         children: _pages,
       ),
-      // LE BOUTON IA (Appelle maintenant le bon ChatAIScreen avec StatefulWidget)
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 90),
         child: FloatingActionButton(
@@ -131,6 +129,30 @@ class HomeBody extends StatefulWidget {
 
 class _HomeBodyState extends State<HomeBody> {
   String _selectedFilter = "All";
+
+  // --- NOUVELLE FONCTION DE DÉCONNEXION RÉELLE ---
+  Future<void> _logout(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final GoogleSignIn googleSignIn = GoogleSignIn();
+
+    // Effacer les SharedPreferences (Nom + statut connexion)
+    await prefs.clear();
+    
+    // Déconnexion Google
+    try {
+      await googleSignIn.signOut();
+    } catch (e) {
+      debugPrint("Erreur Google Sign Out: $e");
+    }
+
+    // Retour au login
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -307,17 +329,14 @@ class _HomeBodyState extends State<HomeBody> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Déconnexion"),
-        content: const Text("Voulez-vous vraiment vous déconnecter ?"),
+        content: const Text("Voulez-vous vraiment vous déconnecter de PharmConnect ?"),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
           TextButton(
-            onPressed: () => Navigator.pushAndRemoveUntil(
-              context, 
-              MaterialPageRoute(builder: (context) => const LoginScreen()), 
-              (r) => false
-            ), 
-            child: const Text("Déconnexion", style: TextStyle(color: Colors.red))
+            onPressed: () => _logout(context), // APPEL DE LA FONCTION MODIFIÉE
+            child: const Text("Déconnexion", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
           ),
         ],
       ),
