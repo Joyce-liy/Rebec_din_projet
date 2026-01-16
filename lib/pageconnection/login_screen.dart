@@ -19,8 +19,10 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
-  // --- CORRECTION DU CONSTRUCTEUR ---
-  // On définit les scopes explicitement pour éviter l'erreur du constructeur vide
+  // Couleur pour les bordures
+  final Color _lightGreenBorder = const Color(0xFFB9F6CA);
+
+  // Configuration Google Sign-In
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     scopes: <String>[
       'email',
@@ -43,17 +45,12 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // --- FONCTION DE CONNEXION GOOGLE ---
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isLoading = true);
     try {
-      // Tente de connecter l'utilisateur
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
-      
       if (googleUser != null) {
         if (!mounted) return;
-        
-        // Navigation vers l'accueil avec le nom récupéré de Google
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -62,14 +59,9 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } catch (error) {
-      print("Erreur Google Sign-In : $error");
-      // Affiche l'erreur réelle dans une bulle en bas
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Échec de connexion Google : $error"),
-            backgroundColor: Colors.redAccent,
-          ),
+          SnackBar(content: Text("Erreur Google : $error"), backgroundColor: Colors.redAccent),
         );
       }
     } finally {
@@ -82,9 +74,6 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isLoading = true);
       await Future.delayed(const Duration(seconds: 1));
       String name = _userController.text.trim();
-      if (name.contains('@')) name = name.split('@')[0];
-      if (name.isEmpty) name = "Utilisateur";
-      
       if (!mounted) return;
       Navigator.pushReplacement(
         context,
@@ -113,13 +102,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 40),
                       _buildWelcomeText(),
                       const SizedBox(height: 40),
+                      
+                      // Champ Email / Utilisateur
                       _buildTextField(
                         controller: _userController,
                         hint: "E-mail ou Utilisateur",
                         icon: Icons.person_outline,
                         validator: (v) => v!.isEmpty ? "Obligatoire" : null,
                       ),
+                      
                       const SizedBox(height: 20),
+                      
+                      // Champ Mot de passe
                       _buildTextField(
                         controller: _passwordController,
                         hint: "Mot de passe",
@@ -127,7 +121,22 @@ class _LoginScreenState extends State<LoginScreen> {
                         isPassword: true,
                         validator: (v) => v!.length < 6 ? "Trop court" : null,
                       ),
-                      const SizedBox(height: 30),
+
+                      // --- OPTION MOT DE PASSE OUBLIÉ ---
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            // Ajouter votre navigation vers la page de récupération ici
+                          },
+                          child: Text(
+                            "Mot de passe oublié ?",
+                            style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 20),
                       _buildLoginButton(),
                       const SizedBox(height: 25),
                       _buildDivider(),
@@ -146,8 +155,6 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-
-  // --- WIDGETS DE STYLE ---
 
   Widget _buildHeader() {
     return Row(
@@ -188,7 +195,19 @@ class _LoginScreenState extends State<LoginScreen> {
         ) : null,
         filled: true,
         fillColor: Colors.grey.shade50,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+        // --- BORDURES VERT CLAIR ---
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide(color: _lightGreenBorder, width: 1.5),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Colors.green, width: 2),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: const BorderSide(color: Colors.redAccent, width: 1),
+        ),
       ),
     );
   }
@@ -204,7 +223,9 @@ class _LoginScreenState extends State<LoginScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           elevation: 0,
         ),
-        child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Se Connecter", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        child: _isLoading 
+          ? const CircularProgressIndicator(color: Colors.white) 
+          : const Text("Se Connecter", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -221,13 +242,32 @@ class _LoginScreenState extends State<LoginScreen> {
     return SizedBox(
       width: double.infinity,
       height: 56,
-      child: OutlinedButton.icon(
-        icon: const Icon(Icons.g_mobiledata, size: 38, color: Colors.blue),
-        label: const Text("Continuer avec Google", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600)),
+      child: OutlinedButton(
         onPressed: _isLoading ? null : _handleGoogleSignIn,
         style: OutlinedButton.styleFrom(
           side: BorderSide(color: Colors.grey.shade300),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black87,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Utilisation d'une image pour le vrai logo Google coloré
+            Image.network(
+              'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png',
+              height: 24,
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              "Continuer avec Google",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+          ],
         ),
       ),
     );
