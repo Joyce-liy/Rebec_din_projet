@@ -6,8 +6,11 @@ class HistoryService {
   static final HistoryService _instance = HistoryService._privateConstructor();
   static HistoryService get instance => _instance;
 
-  static const _kSearchHistoryKey = 'search_history_v2'; // Changé pour éviter les conflits avec l'ancien format
+  static const _kSearchHistoryKey = 'search_history_v2'; 
   final ValueNotifier<List<String>> history = ValueNotifier<List<String>>([]);
+
+  // CORRECTION : Retourne la valeur actuelle de l'historique au lieu de null
+  List<String> get searchHistory => history.value;
 
   Future<void> load() async {
     try {
@@ -28,7 +31,6 @@ class HistoryService {
     }
   }
 
-  // AJOUT DE L'ARGUMENT SOURCE
   Future<void> add(String term, {String source = "Recherche"}) async {
     final t = term.trim();
     if (t.isEmpty) return;
@@ -38,7 +40,7 @@ class HistoryService {
     
     final list = List<String>.from(history.value);
     
-    // On retire l'entrée si elle existe déjà (peu importe la source ou même nom)
+    // On retire l'entrée si elle existe déjà (peu importe la source)
     list.removeWhere((item) => item.endsWith(":$t")); 
     
     list.insert(0, entry);

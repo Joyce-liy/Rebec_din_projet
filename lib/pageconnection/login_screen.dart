@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:pharma/home_screen.dart';
 import 'package:pharma/pageconnection/signup_screen.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? userName;
@@ -18,6 +19,15 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isPasswordVisible = false;
   bool _isLoading = false;
 
+  // --- CORRECTION DU CONSTRUCTEUR ---
+  // On définit les scopes explicitement pour éviter l'erreur du constructeur vide
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: <String>[
+      'email',
+      'https://www.googleapis.com/auth/userinfo.profile',
+    ],
+  );
+
   @override
   void initState() {
     super.initState();
@@ -33,22 +43,49 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  // Simulation d'une connexion pour le côté professionnel
+  // --- FONCTION DE CONNEXION GOOGLE ---
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      // Tente de connecter l'utilisateur
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      
+      if (googleUser != null) {
+        if (!mounted) return;
+        
+        // Navigation vers l'accueil avec le nom récupéré de Google
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HomeScreen(userName: googleUser.displayName ?? "Utilisateur"),
+          ),
+        );
+      }
+    } catch (error) {
+      print("Erreur Google Sign-In : $error");
+      // Affiche l'erreur réelle dans une bulle en bas
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Échec de connexion Google : $error"),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
-
-      // Simulation d'un délai réseau
       await Future.delayed(const Duration(seconds: 1));
-
       String name = _userController.text.trim();
-      if (name.contains('@')) {
-        name = name.split('@')[0];
-      }
-      if (name.isEmpty) name = "Joyce";
-
-      if (!mounted) return;
+      if (name.contains('@')) name = name.split('@')[0];
+      if (name.isEmpty) name = "Utilisateur";
       
+      if (!mounted) return;
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => HomeScreen(userName: name)),
@@ -59,9 +96,9 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white, // Fond blanc pur plus moderne
+      backgroundColor: Colors.white,
       body: SafeArea(
-        child: CustomScrollView( // Permet le scroll si le contenu dépasse (petits écrans)
+        child: CustomScrollView(
           slivers: [
             SliverFillRemaining(
               hasScrollBody: false,
@@ -71,49 +108,32 @@ class _LoginScreenState extends State<LoginScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 30),
                       _buildHeader(),
                       const SizedBox(height: 40),
                       _buildWelcomeText(),
-                      const SizedBox(height: 50),
-                      
-                      // Champ Email / User
+                      const SizedBox(height: 40),
                       _buildTextField(
                         controller: _userController,
-                        hint: "E-mail ou Nom d’utilisateur",
+                        hint: "E-mail ou Utilisateur",
                         icon: Icons.person_outline,
-                        validator: (value) => value!.isEmpty ? "Champ obligatoire" : null,
+                        validator: (v) => v!.isEmpty ? "Obligatoire" : null,
                       ),
-                      
                       const SizedBox(height: 20),
-                      
-                      // Champ Mot de passe
                       _buildTextField(
                         controller: _passwordController,
                         hint: "Mot de passe",
                         icon: Icons.lock_outline,
                         isPassword: true,
-                        validator: (value) => value!.length < 6 ? "Minimum 6 caractères" : null,
+                        validator: (v) => v!.length < 6 ? "Trop court" : null,
                       ),
-
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () {},
-                          child: Text(
-                            "Mot de passe oublié ?",
-                            style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.w600),
-                          ),
-                        ),
-                      ),
-                      
-                      const Spacer(),
-                      
-                      // Bouton de connexion avec état de chargement
+                      const SizedBox(height: 30),
                       _buildLoginButton(),
-                      
-                      const SizedBox(height: 15),
-                      
+                      const SizedBox(height: 25),
+                      _buildDivider(),
+                      const SizedBox(height: 25),
+                      _buildGoogleButton(),
+                      const Spacer(),
                       _buildFooter(),
                       const SizedBox(height: 20),
                     ],
@@ -127,7 +147,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // --- WIDGETS DE COMPOSANTS ---
+  // --- WIDGETS DE STYLE ---
 
   Widget _buildHeader() {
     return Row(
@@ -135,45 +155,26 @@ class _LoginScreenState extends State<LoginScreen> {
       children: [
         Container(
           padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
+          decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)),
           child: const Icon(Icons.medical_services, color: Colors.green, size: 30),
         ),
         const SizedBox(width: 12),
-        const Text(
-          "PharmConnect",
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5),
-        ),
+        const Text("PharmConnect", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
       ],
     );
   }
 
   Widget _buildWelcomeText() {
-    return Column(
+    return const Column(
       children: [
-        const Text(
-          "Bon retour parmi nous !",
-          style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 10),
-        Text(
-          "Connectez-vous pour gérer vos médicaments.",
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 15, color: Colors.grey.shade600),
-        ),
+        Text("Bienvenue", style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+        SizedBox(height: 8),
+        Text("Connectez-vous pour continuer", style: TextStyle(color: Colors.grey)),
       ],
     );
   }
 
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String hint,
-    required IconData icon,
-    bool isPassword = false,
-    String? Function(String?)? validator,
-  }) {
+  Widget _buildTextField({required TextEditingController controller, required String hint, required IconData icon, bool isPassword = false, String? Function(String?)? validator}) {
     return TextFormField(
       controller: controller,
       obscureText: isPassword && !_isPasswordVisible,
@@ -181,30 +182,13 @@ class _LoginScreenState extends State<LoginScreen> {
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon, color: Colors.green),
-        suffixIcon: isPassword 
-          ? IconButton(
-              icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
-              onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
-            )
-          : null,
+        suffixIcon: isPassword ? IconButton(
+          icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+          onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+        ) : null,
         filled: true,
         fillColor: Colors.grey.shade50,
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(color: Color(0xFF00E676)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: Colors.green, width: 1.5),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: Colors.redAccent),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: const BorderSide(color: Colors.redAccent, width: 1.5),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
       ),
     );
   }
@@ -216,18 +200,35 @@ class _LoginScreenState extends State<LoginScreen> {
       child: ElevatedButton(
         onPressed: _isLoading ? null : _handleLogin,
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.green.shade600,
-          foregroundColor: Colors.white,
+          backgroundColor: Colors.green,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          elevation: 2,
-          shadowColor: Colors.green.withOpacity(0.3),
+          elevation: 0,
         ),
-        child: _isLoading 
-          ? const CircularProgressIndicator(color: Colors.white)
-          : const Text(
-              "Se Connecter",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+        child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text("Se Connecter", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+      ),
+    );
+  }
+
+  Widget _buildDivider() {
+    return Row(children: [
+      const Expanded(child: Divider()),
+      Padding(padding: const EdgeInsets.symmetric(horizontal: 15), child: Text("OU", style: TextStyle(color: Colors.grey.shade400))),
+      const Expanded(child: Divider()),
+    ]);
+  }
+
+  Widget _buildGoogleButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 56,
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.g_mobiledata, size: 38, color: Colors.blue),
+        label: const Text("Continuer avec Google", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600)),
+        onPressed: _isLoading ? null : _handleGoogleSignIn,
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: Colors.grey.shade300),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
       ),
     );
   }
@@ -236,13 +237,10 @@ class _LoginScreenState extends State<LoginScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        const Text("Nouveau ici ? "),
+        const Text("Pas de compte ? "),
         GestureDetector(
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SignupScreen())),
-          child: Text(
-            "Créer un compte",
-            style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold),
-          ),
+          child: const Text("S'inscrire", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
         ),
       ],
     );
