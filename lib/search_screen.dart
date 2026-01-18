@@ -7,7 +7,6 @@ import 'package:pharma/services/location_service.dart';
 import 'package:pharma/services/pharmacy_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pharma/services/history_service.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'dart:async';
@@ -49,12 +48,17 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     _initialize();
   }
 
+  Future<void> _loadSearchHistory() async {
+    await HistoryService.instance.load();
+  }
+
   @override
   void dispose() {
     _animationController.dispose();
     _silenceTimer?.cancel();
     super.dispose();
   }
+
   void _startSilenceTimer() {
     _silenceTimer?.cancel();
     _silenceTimer = Timer(const Duration(seconds: 5), () {
@@ -63,43 +67,40 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
       }
     });
   }
+
   void _listen() async {
-  if (!_isListening) {
-    // Initialisation du micro
-    bool available = await _speech.initialize(
-      onStatus: (val) => print('Statut: $val'),
-      onError: (val) => print('Erreur: $val'),
-    );
-
-    if (available) {
-      setState(() => _isListening = true);
-      _startSilenceTimer(); // Lance le chrono de 5s
-
-      _speech.listen(
-        onResult: (val) {
-          setState(() {
-            _searchController.text = val.recognizedWords;
-            // Si on détecte du texte, on prépare l'icône "Envoyer"
-            if (val.recognizedWords.trim().isNotEmpty) {
-              _isSearching = true;
-            }
-          });
-          // On réinitialise le chrono à chaque mot capté
-          _startSilenceTimer();
-        },
+    if (!_isListening) {
+      bool available = await _speech.initialize(
+        onStatus: (val) => print('Statut: $val'),
+        onError: (val) => print('Erreur: $val'),
       );
+
+      if (available) {
+        setState(() => _isListening = true);
+        _startSilenceTimer();
+
+        _speech.listen(
+          onResult: (val) {
+            setState(() {
+              _searchController.text = val.recognizedWords;
+              if (val.recognizedWords.trim().isNotEmpty) {
+                _isSearching = true;
+              }
+            });
+            _startSilenceTimer();
+          },
+        );
+      }
+    } else {
+      _stopListening();
     }
-  } else {
-    _stopListening();
   }
-}
 
-void _stopListening() {
-  _speech.stop();
-  _silenceTimer?.cancel();
-  setState(() => _isListening = false);
-}
-
+  void _stopListening() {
+    _speech.stop();
+    _silenceTimer?.cancel();
+    setState(() => _isListening = false);
+  }
 
   Future<void> _initialize() async {
     setState(() {
@@ -138,10 +139,9 @@ void _stopListening() {
         _locationUnavailable = true;
       });
     }
-  _speech = stt.SpeechToText();
-}
+    _speech = stt.SpeechToText();
+  }
 
-// Fonction pour démarrer/arrêter l'écoute
   Future<void> _refreshLocation() async {
     setState(() {
       _loadingLocation = true;
@@ -281,6 +281,10 @@ void _stopListening() {
     final GeoPoint location = _userLocation!;
     final List<MedicationAvailability> filtered = availabilities
         .where((availability) {
+      final point = availability.pharmacy.localisation;
+      if (point == null) {
+        return false;
+      }
       final distance = GeoUtils.haversineDistance(
         startLat: location.latitude,
         startLng: location.longitude,
@@ -327,9 +331,17 @@ void _stopListening() {
   }
 
   Future<void> _openDirections(Pharmacy pharmacy) async {
+    final point = pharmacy.localisation;
+    if (point == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Localisation indisponible pour cette pharmacie.')),
+        );
+      }
+      return;
+    }
     final Uri url = Uri.parse(
-        'https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}&travelmode=driving');
-      'https://www.google.com/maps/dir/?api=1&destination=${pharmacy.latitude},${pharmacy.longitude}&travelmode=driving',
+      'https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}&travelmode=driving',
     );
     final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
@@ -471,7 +483,7 @@ void _stopListening() {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(pharmacy.quartier),
+              Text(pharmacy.adresse ?? 'Adresse indisponible'),
               const SizedBox(height: 6),
               Wrap(
                 spacing: 12,
@@ -605,6 +617,51 @@ void _stopListening() {
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildHistoryList() {
+    return ValueListenableBuilder<List<String>>(
+      valueListenable: HistoryService.instance.history,
+      builder: (context, history, _) {
+        if (history.isEmpty) {
+          return const Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Aucune recherche recente',
+              style: TextStyle(color: Colors.grey),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: history.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final entry = history[index];
+            final parts = entry.split(':');
+            final source = parts.isNotEmpty ? parts.first : 'Recherche';
+            final term = parts.length > 1 ? parts.sublist(1).join(':') : entry;
+
+            final IconData icon =
+                source == 'Scanner' ? Icons.document_scanner_outlined : Icons.history;
+
+            return ListTile(
+              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+              leading: Icon(icon, color: Colors.green),
+              title: Text(term),
+              subtitle: Text(source),
+              onTap: () => _onRecentSearchSelected(term),
+              trailing: IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () => HistoryService.instance.remove(entry),
+              ),
+            );
+          },
         );
       },
     );

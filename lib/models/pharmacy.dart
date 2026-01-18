@@ -61,28 +61,53 @@ class PharmacyMedication {
   final DateTime lastUpdate;
 }
 
+class GeoLocationPoint {
+  const GeoLocationPoint({
+    required this.latitude,
+    required this.longitude,
+  });
+
+  factory GeoLocationPoint.fromJson(Map<String, dynamic> json) {
+    final List<dynamic> coordinates =
+        (json['coordinates'] as List<dynamic>?) ?? const [];
+    final double longitude = coordinates.isNotEmpty
+        ? (coordinates[0] as num?)?.toDouble() ?? 0
+        : 0;
+    final double latitude = coordinates.length > 1
+        ? (coordinates[1] as num?)?.toDouble() ?? 0
+        : 0;
+    return GeoLocationPoint(latitude: latitude, longitude: longitude);
+  }
+
+  final double latitude;
+  final double longitude;
+}
+
 class Pharmacy {
   const Pharmacy({
     required this.id,
     required this.nom,
-    required this.quartier,
-    required this.latitude,
-    required this.longitude,
+    required this.adresse,
     required this.telephone,
+    required this.whatsapp,
+    required this.localisation,
     required this.horaires,
     required this.medicaments,
   });
 
   factory Pharmacy.fromJson(Map<String, dynamic> json) {
     final medicationsJson = json['medicaments'] as List<dynamic>? ?? [];
+    final localisationJson = json['localisation'] as Map<String, dynamic>?;
     return Pharmacy(
-      id: json['id'] as String? ?? '',
+      id: _parseId(json['id']),
       nom: json['nom'] as String? ?? '',
-      quartier: json['quartier'] as String? ?? '',
-      latitude: (json['latitude'] as num?)?.toDouble() ?? 0,
-      longitude: (json['longitude'] as num?)?.toDouble() ?? 0,
-      telephone: json['telephone'] as String? ?? '',
-      horaires: json['horaires'] as String? ?? '',
+      adresse: json['adresse'] as String?,
+      telephone: json['telephone'] as String?,
+      whatsapp: json['whatsapp'] as String?,
+      localisation: localisationJson != null
+          ? GeoLocationPoint.fromJson(localisationJson)
+          : null,
+      horaires: json['horaires'] as String?,
       medicaments: medicationsJson
           .map((item) => PharmacyMedication.fromJson(
               item as Map<String, dynamic>))
@@ -90,13 +115,18 @@ class Pharmacy {
     );
   }
 
-  final String id;
+  static int _parseId(dynamic value) {
+    if (value is int) return value;
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  final int id;
   final String nom;
-  final String quartier;
-  final double latitude;
-  final double longitude;
-  final String telephone;
-  final String horaires;
+  final String? adresse;
+  final String? telephone;
+  final String? whatsapp;
+  final GeoLocationPoint? localisation;
+  final String? horaires;
   final List<PharmacyMedication> medicaments;
 
   PharmacyMedication? medicationById(String id) =>

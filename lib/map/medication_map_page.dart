@@ -105,11 +105,17 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
     final availabilities = _availabilitiesWithinRadius();
     if (availabilities.isNotEmpty) {
       final Pharmacy pharmacy = availabilities.first.pharmacy;
-      return LatLng(pharmacy.latitude, pharmacy.longitude);
+      final point = pharmacy.localisation;
+      if (point != null) {
+        return LatLng(point.latitude, point.longitude);
+      }
     }
     if (widget.entry.availabilities.isNotEmpty) {
       final Pharmacy pharmacy = widget.entry.availabilities.first.pharmacy;
-      return LatLng(pharmacy.latitude, pharmacy.longitude);
+      final point = pharmacy.localisation;
+      if (point != null) {
+        return LatLng(point.latitude, point.longitude);
+      }
     }
     return null;
   }
@@ -127,28 +133,38 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
 
     final List<MedicationAvailability> filtered = widget.entry.availabilities
         .where((availability) {
+      final point = availability.pharmacy.localisation;
+      if (point == null) {
+        return false;
+      }
       final double distance = GeoUtils.haversineDistance(
         startLat: location.latitude,
         startLng: location.longitude,
-        endLat: availability.pharmacy.latitude,
-        endLng: availability.pharmacy.longitude,
+        endLat: point.latitude,
+        endLng: point.longitude,
       );
       return distance <= _radiusMeters;
     }).toList();
 
     filtered.sort((a, b) {
-      final double distanceA = GeoUtils.haversineDistance(
-        startLat: location.latitude,
-        startLng: location.longitude,
-        endLat: a.pharmacy.latitude,
-        endLng: a.pharmacy.longitude,
-      );
-      final double distanceB = GeoUtils.haversineDistance(
-        startLat: location.latitude,
-        startLng: location.longitude,
-        endLat: b.pharmacy.latitude,
-        endLng: b.pharmacy.longitude,
-      );
+      final pointA = a.pharmacy.localisation;
+      final pointB = b.pharmacy.localisation;
+      final double distanceA = pointA == null
+          ? double.infinity
+          : GeoUtils.haversineDistance(
+              startLat: location.latitude,
+              startLng: location.longitude,
+              endLat: pointA.latitude,
+              endLng: pointA.longitude,
+            );
+      final double distanceB = pointB == null
+          ? double.infinity
+          : GeoUtils.haversineDistance(
+              startLat: location.latitude,
+              startLng: location.longitude,
+              endLat: pointB.latitude,
+              endLng: pointB.longitude,
+            );
       return distanceA.compareTo(distanceB);
     });
 
@@ -171,11 +187,15 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
     if (location == null) {
       return 'Distance inconnue';
     }
+    final point = pharmacy.localisation;
+    if (point == null) {
+      return 'Distance inconnue';
+    }
     final double distance = GeoUtils.haversineDistance(
       startLat: location.latitude,
       startLng: location.longitude,
-      endLat: pharmacy.latitude,
-      endLng: pharmacy.longitude,
+      endLat: point.latitude,
+      endLng: point.longitude,
     );
     if (distance >= 1000) {
       return '${(distance / 1000).toStringAsFixed(1)} km';
@@ -202,13 +222,17 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
     }
 
     for (final availability in availabilities) {
+      final point = availability.pharmacy.localisation;
+      if (point == null) {
+        continue;
+      }
       markers.add(
         Marker(
           width: 70,
           height: 70,
           point: LatLng(
-            availability.pharmacy.latitude,
-            availability.pharmacy.longitude,
+            point.latitude,
+            point.longitude,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -384,7 +408,7 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                pharmacy.quartier,
+                                pharmacy.adresse ?? 'Adresse indisponible',
                                 style: const TextStyle(color: Colors.black54),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,

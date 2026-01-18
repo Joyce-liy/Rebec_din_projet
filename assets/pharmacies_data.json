@@ -1,13 +1,16 @@
 {
   "pharmacies": [
     {
-      "id": "ph_001",
+      "id": 1,
       "nom": "Pharmacie du Centre",
-      "quartier": "Bastos, Yaoundé",
-      "latitude": 3.873121,
-      "longitude": 11.521708,
+      "adresse": "Avenue Kennedy, Bastos, Yaoundé",
       "telephone": "+237 222 00 00 01",
+      "whatsapp": "+237 699 00 00 01",
       "horaires": "08h00 - 21h00",
+      "localisation": {
+        "type": "Point",
+        "coordinates": [11.521708, 3.873121]
+      },
       "medicaments": [
         {
           "id": "med_001",
@@ -39,13 +42,16 @@
       ]
     },
     {
-      "id": "ph_002",
+      "id": 2,
       "nom": "Pharmacie de la Paix",
-      "quartier": "Mvan, Yaoundé",
-      "latitude": 3.818472,
-      "longitude": 11.513324,
+      "adresse": "Rue principale, Mvan, Yaoundé",
       "telephone": "+237 222 00 00 02",
+      "whatsapp": "+237 699 00 00 02",
       "horaires": "07h30 - 22h00",
+      "localisation": {
+        "type": "Point",
+        "coordinates": [11.513324, 3.818472]
+      },
       "medicaments": [
         {
           "id": "med_001",
@@ -68,13 +74,16 @@
       ]
     },
     {
-      "id": "ph_003",
+      "id": 3,
       "nom": "Pharmacie Nouvelle",
-      "quartier": "Biyem-Assi, Yaoundé",
-      "latitude": 3.822512,
-      "longitude": 11.481356,
+      "adresse": "Carrefour Biyem-Assi, Yaoundé",
       "telephone": "+237 222 00 00 03",
+      "whatsapp": "+237 699 00 00 03",
       "horaires": "08h30 - 21h30",
+      "localisation": {
+        "type": "Point",
+        "coordinates": [11.481356, 3.822512]
+      },
       "medicaments": [
         {
           "id": "med_002",
@@ -97,13 +106,16 @@
       ]
     },
     {
-      "id": "ph_004",
+      "id": 4,
       "nom": "Pharmacie de l'Étoile",
-      "quartier": "Nlongkak, Yaoundé",
-      "latitude": 3.866418,
-      "longitude": 11.497904,
+      "adresse": "Boulevard du 20 Mai, Nlongkak, Yaoundé",
       "telephone": "+237 222 00 00 04",
+      "whatsapp": "+237 699 00 00 04",
       "horaires": "09h00 - 20h30",
+      "localisation": {
+        "type": "Point",
+        "coordinates": [11.497904, 3.866418]
+      },
       "medicaments": [
         {
           "id": "med_001",
