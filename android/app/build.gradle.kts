@@ -1,5 +1,8 @@
 plugins {
     id("com.android.application")
+    // START: FlutterFire Configuration
+    id("com.google.gms.google-services")
+    // END: FlutterFire Configuration
     id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
@@ -7,7 +10,7 @@ plugins {
 
 android {
     namespace = "com.example.pharma"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = "29.0.13113456"
 
     compileOptions {
@@ -24,17 +27,20 @@ android {
         applicationId = "com.example.pharma"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 24
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+      getByName("release") {
+            // Utilise la clé de debug pour permettre l'installation sans configurer de Keystore
             signingConfig = signingConfigs.getByName("debug")
+            
+            // Correction des noms pour le format .kts
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }

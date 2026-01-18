@@ -1,9 +1,13 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // AJOUTÉ
+import 'package:google_sign_in/google_sign_in.dart'; // AJOUTÉ
 import 'package:pharma/pageconnection/login_screen.dart'; 
 import 'package:pharma/profil.dart'; 
 import 'package:pharma/search_screen.dart';
 import 'package:pharma/services/history_service.dart';
 import 'package:pharma/scanner_page.dart'; 
+import 'package:pharma/chat_ai_screen.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final String userName;
@@ -20,37 +24,94 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget build(BuildContext context) {
     final List<Widget> _pages = [
       HomeBody(userName: widget.userName),        
-      const SearchScreen(),                                             
+      const SearchScreen(),                                
       const ScannerPage(), 
       SettingsScreen(userName: widget.userName),  
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8), // Fond légèrement teinté pour faire ressortir les cartes
+      backgroundColor: const Color(0xFFF8FAF8),
+      extendBody: true, 
       body: IndexedStack(
         index: _currentIndex,
         children: _pages,
       ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, spreadRadius: 2),
-          ],
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 90),
+        child: FloatingActionButton(
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ChatAIScreen()),
+            );
+          },
+          backgroundColor: Colors.green.shade700,
+          elevation: 6,
+          shape: const CircleBorder(),
+          child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
         ),
-        child: BottomNavigationBar(
-          type: BottomNavigationBarType.fixed,
-          currentIndex: _currentIndex,
-          selectedItemColor: Colors.green.shade700,
-          unselectedItemColor: Colors.grey.shade400,
-          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-          elevation: 0,
-          backgroundColor: Colors.white,
-          onTap: (index) => setState(() => _currentIndex = index),
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: "Accueil"),
-            BottomNavigationBarItem(icon: Icon(Icons.search_rounded), label: "Recherche"),
-            BottomNavigationBarItem(icon: Icon(Icons.document_scanner_rounded), label: "Scanner"),
-            BottomNavigationBarItem(icon: Icon(Icons.person_rounded), label: "Profil"),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      bottomNavigationBar: _buildProfessionalNavbar(),
+    );
+  }
+
+  Widget _buildProfessionalNavbar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.85),
+        border: Border(top: BorderSide(color: Colors.grey.shade200, width: 0.5)),
+      ),
+      child: ClipRect(
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+          child: Container(
+            height: 85,
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _navbarItem(0, Icons.home_rounded, "Accueil"),
+                _navbarItem(1, Icons.search_rounded, "Recherche"),
+                _navbarItem(2, Icons.document_scanner_rounded, "Scanner"),
+                _navbarItem(3, Icons.person_rounded, "Profil"),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _navbarItem(int index, IconData icon, String label) {
+    bool isSelected = _currentIndex == index;
+    Color color = isSelected ? Colors.green.shade700 : Colors.grey.shade400;
+
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _currentIndex = index),
+        behavior: HitTestBehavior.opaque,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              decoration: BoxDecoration(
+                color: isSelected ? Colors.green.withOpacity(0.1) : Colors.transparent,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Icon(icon, color: color, size: 26),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
           ],
         ),
       ),
@@ -69,6 +130,30 @@ class HomeBody extends StatefulWidget {
 class _HomeBodyState extends State<HomeBody> {
   String _selectedFilter = "All";
 
+  // --- NOUVELLE FONCTION DE DÉCONNEXION RÉELLE ---
+  Future<void> _logout(BuildContext context) async {
+    final prefs = await SharedPreferences.getInstance();
+    final GoogleSignIn googleSignIn = GoogleSignIn();
+
+    // Effacer les SharedPreferences (Nom + statut connexion)
+    await prefs.clear();
+    
+    // Déconnexion Google
+    try {
+      await googleSignIn.signOut();
+    } catch (e) {
+      debugPrint("Erreur Google Sign Out: $e");
+    }
+
+    // Retour au login
+    if (!mounted) return;
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
+      (route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     String initial = widget.userName.isNotEmpty ? widget.userName[0].toUpperCase() : "J";
@@ -76,12 +161,10 @@ class _HomeBodyState extends State<HomeBody> {
     return SafeArea(
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.fromLTRB(20, 25, 20, 180),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 25),
-            // En-tête amélioré
             Row(
               children: [
                 Expanded(
@@ -98,18 +181,13 @@ class _HomeBodyState extends State<HomeBody> {
                 _buildAvatar(initial),
               ],
             ),
-            
             const SizedBox(height: 30),
-            // Zone de recherche visuelle (incitation)
             _buildSearchPrompt(),
-
             const SizedBox(height: 30),
-            // Section Filtres
             const Text("Filtrer par", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54)),
             const SizedBox(height: 12),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
               child: Row(
                 children: [
                   _buildChip("All", Icons.apps_rounded),
@@ -120,7 +198,6 @@ class _HomeBodyState extends State<HomeBody> {
                 ],
               ),
             ),
-
             const SizedBox(height: 35),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -135,9 +212,6 @@ class _HomeBodyState extends State<HomeBody> {
                 )
               ],
             ),
-            const SizedBox(height: 10),
-
-            // Liste d'historique avec animation de chargement
             ValueListenableBuilder<List<String>>(
               valueListenable: HistoryService.instance.history,
               builder: (context, historyList, child) {
@@ -146,9 +220,7 @@ class _HomeBodyState extends State<HomeBody> {
                   return item.startsWith(_selectedFilter);
                 }).toList();
 
-                if (filtered.isEmpty) {
-                  return _buildEmptyState();
-                }
+                if (filtered.isEmpty) return _buildEmptyState();
 
                 return ListView.builder(
                   shrinkWrap: true,
@@ -169,7 +241,6 @@ class _HomeBodyState extends State<HomeBody> {
                 );
               },
             ),
-            const SizedBox(height: 30),
           ],
         ),
       ),
@@ -179,18 +250,10 @@ class _HomeBodyState extends State<HomeBody> {
   Widget _buildAvatar(String initial) {
     return GestureDetector(
       onTap: () => _showLogoutDialog(context),
-      child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(color: Colors.green.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4)),
-          ],
-        ),
-        child: CircleAvatar(
-          backgroundColor: Colors.green.shade600,
-          radius: 26,
-          child: Text(initial, style: const TextStyle(fontSize: 20, color: Colors.white, fontWeight: FontWeight.bold)),
-        ),
+      child: CircleAvatar(
+        backgroundColor: Colors.green.shade600,
+        radius: 26,
+        child: Text(initial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -202,21 +265,18 @@ class _HomeBodyState extends State<HomeBody> {
         gradient: LinearGradient(colors: [Colors.green.shade600, Colors.green.shade400]),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Row(
+      child: const Row(
         children: [
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text("Besoin d'un remède ?", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                SizedBox(height: 5),
-                Text("Scannez votre ordonnance ou tapez le nom du médicament.", 
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
+                Text("Scannez votre ordonnance ou tapez le nom.", style: TextStyle(color: Colors.white70, fontSize: 13)),
               ],
             ),
           ),
-          const SizedBox(width: 10),
-          Icon(Icons.medication_liquid_rounded, size: 40, color: Colors.white.withOpacity(0.5)),
+          Icon(Icons.medication_liquid_rounded, size: 40, color: Colors.white54),
         ],
       ),
     );
@@ -224,58 +284,45 @@ class _HomeBodyState extends State<HomeBody> {
 
   Widget _buildChip(String label, IconData icon) {
     bool isSelected = _selectedFilter == label;
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 200),
-      child: GestureDetector(
-        onTap: () => setState(() => _selectedFilter = label),
-        child: Chip(
-          avatar: Icon(icon, size: 18, color: isSelected ? Colors.white : Colors.green.shade700),
-          label: Text(label, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
-          backgroundColor: isSelected ? Colors.green.shade600 : Colors.white,
-          labelStyle: TextStyle(color: isSelected ? Colors.white : Colors.black87),
-          elevation: isSelected ? 4 : 0,
-          side: BorderSide(color: isSelected ? Colors.transparent : Colors.grey.shade200),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+    return GestureDetector(
+      onTap: () => setState(() => _selectedFilter = label),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.green.shade600 : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isSelected ? Colors.transparent : Colors.grey.shade200),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: isSelected ? Colors.white : Colors.green.shade700),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.black87)),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildHistoryItem(IconData icon, String title, String source) {
-    return Container(
+    return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 4)),
-        ],
-      ),
+      elevation: 0,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade100)),
       child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-          child: Icon(icon, size: 22, color: Colors.green.shade700),
-        ),
-        title: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        subtitle: Text("Via $source", style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
-        trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey.shade400),
+        leading: Icon(icon, color: Colors.green),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text("Via $source"),
+        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
       ),
     );
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        children: [
-          const SizedBox(height: 40),
-          Icon(Icons.history_rounded, size: 60, color: Colors.grey.shade200),
-          const SizedBox(height: 10),
-          const Text("Aucun historique pour le moment", style: TextStyle(color: Colors.grey, fontSize: 14)),
-        ],
-      ),
-    );
+    return const Center(child: Padding(
+      padding: EdgeInsets.all(40.0),
+      child: Text("Aucun historique", style: TextStyle(color: Colors.grey)),
+    ));
   }
 
   void _showLogoutDialog(BuildContext context) {
@@ -284,17 +331,12 @@ class _HomeBodyState extends State<HomeBody> {
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Déconnexion"),
-        content: const Text("Êtes-vous sûr de vouloir quitter votre session ?"),
+        content: const Text("Voulez-vous vraiment vous déconnecter de PharmConnect ?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text("Annuler", style: TextStyle(color: Colors.grey.shade600))),
-          Container(
-            margin: const EdgeInsets.only(right: 8),
-            child: ElevatedButton(
-              onPressed: () => Navigator.pushAndRemoveUntil(
-                context, MaterialPageRoute(builder: (context) => const LoginScreen()), (r) => false),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-              child: const Text("Déconnexion", style: TextStyle(color: Colors.white)),
-            ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
+          TextButton(
+            onPressed: () => _logout(context), // APPEL DE LA FONCTION MODIFIÉE
+            child: const Text("Déconnexion", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
           ),
         ],
       ),
