@@ -736,69 +736,93 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                       ),
                     ),
                     const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _searchController,
-                            onChanged: _onQueryChanged,
-                            onSubmitted: (value) {
+                                      Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: _onQueryChanged,
+                          onSubmitted: (value) {
+                            if (value.trim().isNotEmpty) {
                               HistoryService.instance.add(value);
                               _applyFilter(value);
-                            },
-                            decoration: InputDecoration(
-                              hintText: 'Rechercher un medicament',
-                              hintStyle: TextStyle(color: Colors.grey[400]),
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                color: Colors.green,
-                                size: 30,
-                              ),
-                              suffixIcon: _isSearching
-                                  ? IconButton(
-                                      onPressed: _clearSearch,
-                                      icon: const Icon(
-                                        Icons.clear,
-                                        color: Colors.grey,
-                                      ),
-                                    )
-                                  : null,
-                              filled: true,
-                              fillColor: Colors.white,
-                              contentPadding: const EdgeInsets.symmetric(
-                                vertical: 15,
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30),
-                                borderSide: BorderSide(
-                                  color: Colors.grey[300]!,
-                                ),
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(30),
-                              ),
+                            }
+                          },
+                          decoration: InputDecoration(
+                            hintText: 'Rechercher un medicament',
+                            hintStyle: TextStyle(color: Colors.grey[400]),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: Colors.green,
+                              size: 30,
+                            ),
+                            suffixIcon: _isSearching
+                                ? IconButton(
+                                    onPressed: _clearSearch,
+                                    icon: const Icon(
+                                      Icons.clear,
+                                      color: Colors.grey,
+                                    ),
+                                  )
+                                : null,
+                            filled: true,
+                            fillColor: Colors.white,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 15),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              borderSide: BorderSide(color: Colors.grey[300]!),
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(30),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 15),
-                        Container(
-                          decoration: const BoxDecoration(
-                            color: Colors.green,
+                      ),
+                      const SizedBox(width: 15),
+                      // --- BOUTON DYNAMIQUE (VOCAL OU ENVOYER) ---
+                      GestureDetector(
+                        onTap: () {
+                          if (_searchController.text.trim().isNotEmpty) {
+                            // Action ENVOYER
+                            HistoryService.instance.add(_searchController.text);
+                            _applyFilter(_searchController.text);
+                            FocusScope.of(context).unfocus(); // Ferme le clavier
+                          } else {
+                            // Action VOCAL
+                            _listen();
+                          }
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            // Change de couleur : Rouge si écoute, Bleu si texte présent, Vert sinon
+                            color: _isListening 
+                                ? Colors.red 
+                                : (_searchController.text.isNotEmpty ? Colors.green : Colors.green),
                             shape: BoxShape.circle,
                           ),
-                          child: IconButton(
-                            icon: const Icon(Icons.mic, color: Colors.white),
-                            onPressed: () {},
+                          child: Icon(
+                            // Change d'icône : Stop si écoute, Send si texte présent, Mic sinon
+                            _isListening 
+                                ? Icons.stop 
+                                : (_searchController.text.isNotEmpty ? Icons.send : Icons.mic),
+                            color: Colors.white,
                           ),
-                        )
-                      ],
-                    ),
+                        ),
+                      ),
+                    ],
+                  ),
                     const SizedBox(height: 30),
                     SizedBox(
                       width: double.infinity,
                       height: 55,
                       child: ElevatedButton.icon(
-                        onPressed: () {},
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => const ScannerPage()),
+                          );
+                        },
                         icon: const Icon(Icons.camera_alt_outlined, color: Colors.white),
                         label: const Text('Scanner une ordonnance',
                             style: TextStyle(

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:pharma/services/gemini_service.dart';
 import 'package:pharma/services/history_service.dart';
 
 class ScannerPage extends StatefulWidget {
@@ -23,7 +24,6 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
   void initState() {
     super.initState();
     _initializeCamera();
-    // Animation pour le trait de scan qui descend
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -34,10 +34,12 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     final cameras = await availableCameras();
     if (cameras.isEmpty) return;
 
+    // Utilisation de 'high' pour la stabilité sur Android
     _controller = CameraController(
       cameras[0], 
-      ResolutionPreset.max, // Qualité max pour l'OCR
+      ResolutionPreset.high, 
       enableAudio: false,
+      imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
     try {
@@ -56,31 +58,34 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
 
     try {
       final XFile image = await _controller!.takePicture();
-      final inputImage = InputImage.fromFilePath(image.path);
-      final RecognizedText recognizedText = await _textRecognizer.processImage(inputImage);
+      final bytes = await image.readAsBytes();
 
-      List<Map<String, dynamic>> tempMeds = [];
-      
-      for (TextBlock block in recognizedText.blocks) {
-        for (TextLine line in block.lines) {
-          String text = line.text.trim();
-          // Filtrage intelligent
-          if (text.length > 3 && !RegExp(r'[0-9]{2}/').hasMatch(text)) {
-            tempMeds.add({"name": text, "selected": true});
-          }
-        }
-      }
+      // Appel au service Gemini avec le nom de fonction corrigé
+      final List<String> result = await GeminiService.readHandwrittenPrescription(bytes);
+
+      if (!mounted) return;
 
       setState(() {
-        _detectedMeds = tempMeds;
+        _detectedMeds = result.map((name) => {
+          "name": name, 
+          "selected": true
+        }).toList();
         _isProcessing = false;
       });
 
       if (_detectedMeds.isNotEmpty) {
-        _showResultsSheet(); // Affiche les résultats de façon élégante
+        _showResultsSheet();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Aucun médicament détecté. Essayez de mieux éclairer l'image.")),
+        );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isProcessing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Erreur : $e")),
+      );
     }
   }
 
@@ -99,16 +104,14 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // APERÇU CAMÉRA PLEIN ÉCRAN
           if (_isInitialized) 
             CameraPreview(_controller!)
           else 
             const Center(child: CircularProgressIndicator(color: Colors.green)),
 
-          // VISEUR ET OVERLAY
           _buildSmartOverlay(),
 
-          // BOUTON RETOUR
+          // Bouton Fermer
           Positioned(
             top: 50,
             left: 20,
@@ -121,7 +124,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
             ),
           ),
 
-          // BOUTON DE CAPTURE
+          // Interface de capture
           Positioned(
             bottom: 60,
             left: 0,
@@ -129,13 +132,13 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
             child: Column(
               children: [
                 const Text("Alignez l'ordonnance dans le cadre", 
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500)),
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, shadows: [Shadow(blurRadius: 10)])),
                 const SizedBox(height: 20),
                 GestureDetector(
                   onTap: _scanImage,
                   child: Container(
-                    height: 80,
-                    width: 80,
+                    height: 85,
+                    width: 85,
                     padding: const EdgeInsets.all(5),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
@@ -144,8 +147,8 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                     child: Container(
                       decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                       child: _isProcessing 
-                        ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Colors.green))
-                        : const Icon(Icons.qr_code_scanner, size: 40, color: Colors.green),
+                        ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Colors.green, strokeWidth: 3))
+                        : const Icon(Icons.qr_code_scanner, size: 40, color: Colors.green), // TON ANCIENNE ICONE
                     ),
                   ),
                 ),
@@ -158,55 +161,61 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
   }
 
   Widget _buildSmartOverlay() {
-    return AnimatedBuilder(
-      animation: _animationController,
-      builder: (context, child) {
-        return Stack(
-          children: [
-            // Fond semi-transparent avec trou au milieu (Viseur)
-            ColorFiltered(
-              colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.5), BlendMode.srcOut),
-              child: Stack(
-                children: [
-                  Container(decoration: const BoxDecoration(color: Colors.black, backgroundBlendMode: BlendMode.dstOut)),
-                  Align(
-                    alignment: Alignment.center,
-                    child: Container(
-                      width: MediaQuery.of(context).size.width * 0.85,
-                      height: 400,
-                      decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)),
-                    ),
-                  ),
-                ],
+    double width = MediaQuery.of(context).size.width * 0.85;
+    double height = 400;
+
+    return Stack(
+      children: [
+        ColorFiltered(
+          colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.5), BlendMode.srcOut),
+          child: Stack(
+            children: [
+              Container(decoration: const BoxDecoration(color: Colors.black, backgroundBlendMode: BlendMode.dstOut)),
+              Align(
+                alignment: Alignment.center,
+                child: Container(
+                  width: width,
+                  height: height,
+                  decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)),
+                ),
               ),
+            ],
+          ),
+        ),
+        // Bordures et trait de scan
+        Align(
+          alignment: Alignment.center,
+          child: Container(
+            width: width,
+            height: height,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.green.withOpacity(0.5), width: 2),
+              borderRadius: BorderRadius.circular(20),
             ),
-            // Barre de scan animée
-            Align(
-              alignment: Alignment.center,
-              child: SizedBox(
-                width: MediaQuery.of(context).size.width * 0.85,
-                height: 400,
-                child: Stack(
-                  children: [
-                    Positioned(
-                      top: _animationController.value * 380,
+            child: Stack(
+              children: [
+                AnimatedBuilder(
+                  animation: _animationController,
+                  builder: (context, child) {
+                    return Positioned(
+                      top: _animationController.value * (height - 20),
                       left: 10,
                       right: 10,
                       child: Container(
                         height: 2,
                         decoration: BoxDecoration(
-                          boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.5), blurRadius: 10, spreadRadius: 2)],
+                          boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.6), blurRadius: 10, spreadRadius: 2)],
                           gradient: const LinearGradient(colors: [Colors.transparent, Colors.green, Colors.transparent]),
                         ),
                       ),
-                    ),
-                  ],
+                    );
+                  },
                 ),
-              ),
+              ],
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 
@@ -217,7 +226,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       backgroundColor: Colors.transparent,
       builder: (context) => StatefulBuilder(
         builder: (context, setSheetState) => Container(
-          height: MediaQuery.of(context).size.height * 0.6,
+          height: MediaQuery.of(context).size.height * 0.65,
           decoration: const BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
@@ -229,7 +238,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
               Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
               const SizedBox(height: 20),
               const Text("Médicaments identifiés", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              const Text("Décochez ceux que vous ne cherchez pas", style: TextStyle(color: Colors.grey)),
+              const Text("Désélectionnez si nécessaire", style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 20),
               Expanded(
                 child: ListView.builder(
@@ -243,17 +252,21 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                   ),
                 ),
               ),
+              const SizedBox(height: 10),
               SizedBox(
                 width: double.infinity,
                 height: 55,
                 child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green, 
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                  ),
                   onPressed: () {
                     for (var med in _detectedMeds) {
-                      if (med['selected']) HistoryService.instance.add(med['name'], source: "Scanner");
+                      if (med['selected']) HistoryService.instance.add(med['name'], source: "Scanner IA");
                     }
-                    Navigator.pop(context); // Ferme le sheet
-                    Navigator.pop(context); // Quitte le scanner
+                    Navigator.pop(context); 
+                    Navigator.pop(context); 
                   },
                   child: const Text("VÉRIFIER LE STOCK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),

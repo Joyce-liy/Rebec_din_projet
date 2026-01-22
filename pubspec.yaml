@@ -49,6 +49,8 @@ dependencies:
   google_generative_ai: ^0.4.7
   google_sign_in: ^6.2.1
   firebase_core: ^4.3.0
+  google_maps_flutter: ^2.14.0
+  http: ^1.6.0
 
 dev_dependencies:
 flutter_launcher_icons:

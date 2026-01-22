@@ -1,13 +1,15 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // AJOUTÉ
-import 'package:google_sign_in/google_sign_in.dart'; // AJOUTÉ
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pharma/pageconnection/login_screen.dart'; 
 import 'package:pharma/profil.dart'; 
 import 'package:pharma/search_screen.dart';
 import 'package:pharma/services/history_service.dart';
 import 'package:pharma/scanner_page.dart'; 
 import 'package:pharma/chat_ai_screen.dart'; 
+// Importez votre page de création ici
+ import 'package:pharma/create_pharma_screen.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final String userName;
@@ -22,6 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Les pages de la barre de navigation
     final List<Widget> _pages = [
       HomeBody(userName: widget.userName),        
       const SearchScreen(),                                
@@ -36,21 +39,48 @@ class _HomeScreenState extends State<HomeScreen> {
         index: _currentIndex,
         children: _pages,
       ),
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 90),
-        child: FloatingActionButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const ChatAIScreen()),
-            );
-          },
-          backgroundColor: Colors.green.shade700,
-          elevation: 6,
-          shape: const CircleBorder(),
-          child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
-        ),
-      ),
+
+      // --- BOUTONS FLOTTANTS CONDITIONNELS (ACCUEIL & RECHERCHE UNIQUEMENT) ---
+      floatingActionButton: (_currentIndex == 0 || _currentIndex == 1) 
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+             // Bouton 1 (Haut) : Chat IA
+              FloatingActionButton(
+                heroTag: "btn_chat_ai",
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const ChatAIScreen()),
+                  );
+                },
+                backgroundColor: Colors.green.shade700,
+                elevation: 6,
+                shape: const CircleBorder(),
+                child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
+              ),
+
+              const SizedBox(height: 12), // Espace entre les deux
+
+              // Bouton 2 (Bas) : Créer une Pharmacie
+              Padding(
+                padding: const EdgeInsets.only(bottom: 90), // Évite la BottomNavbar
+                child: FloatingActionButton(
+                  heroTag: "btn_add_pharma",
+                  onPressed: () {
+                    print("Ouvrir création pharmacie");
+                     Navigator.push(context, MaterialPageRoute(builder: (context) => const CreatePharmaScreen()));
+                  },
+                  backgroundColor: Colors.green.shade700,
+                  elevation: 4,
+                  mini: true, // Plus petit pour garder la hiérarchie
+                  child: const Icon(Icons.add_business_rounded, color: Colors.white),
+                ),
+              ),
+            ],
+          )
+        : null,
+
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       bottomNavigationBar: _buildProfessionalNavbar(),
     );
@@ -130,22 +160,12 @@ class HomeBody extends StatefulWidget {
 class _HomeBodyState extends State<HomeBody> {
   String _selectedFilter = "All";
 
-  // --- NOUVELLE FONCTION DE DÉCONNEXION RÉELLE ---
   Future<void> _logout(BuildContext context) async {
     final prefs = await SharedPreferences.getInstance();
     final GoogleSignIn googleSignIn = GoogleSignIn();
-
-    // Effacer les SharedPreferences (Nom + statut connexion)
     await prefs.clear();
-    
-    // Déconnexion Google
-    try {
-      await googleSignIn.signOut();
-    } catch (e) {
-      debugPrint("Erreur Google Sign Out: $e");
-    }
+    try { await googleSignIn.signOut(); } catch (e) { debugPrint(e.toString()); }
 
-    // Retour au login
     if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
@@ -171,20 +191,25 @@ class _HomeBodyState extends State<HomeBody> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Bonjour,", 
-                        style: TextStyle(fontSize: 16, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
-                      Text(widget.userName, 
-                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
+                      Text("Bonjour,", style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
+                      Text(widget.userName, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
-                _buildAvatar(initial),
+                GestureDetector(
+                  onTap: () => _showLogoutDialog(context),
+                  child: CircleAvatar(
+                    backgroundColor: Colors.green.shade600,
+                    radius: 26,
+                    child: Text(initial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 30),
             _buildSearchPrompt(),
             const SizedBox(height: 30),
-            const Text("Filtrer par", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black54)),
+            const Text("Filtrer par", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -202,58 +227,31 @@ class _HomeBodyState extends State<HomeBody> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  _selectedFilter == "All" ? "Historique récent" : "Résultats $_selectedFilter",
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                ),
+                Text(_selectedFilter == "All" ? "Historique" : "Résultats $_selectedFilter",
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 TextButton(
                   onPressed: () => HistoryService.instance.clear(),
-                  child: const Text("Effacer", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600)),
+                  child: const Text("Effacer", style: TextStyle(color: Colors.redAccent)),
                 )
               ],
             ),
             ValueListenableBuilder<List<String>>(
               valueListenable: HistoryService.instance.history,
               builder: (context, historyList, child) {
-                final filtered = historyList.where((item) {
-                  if (_selectedFilter == "All") return true;
-                  return item.startsWith(_selectedFilter);
-                }).toList();
-
-                if (filtered.isEmpty) return _buildEmptyState();
-
+                final filtered = historyList.where((item) => _selectedFilter == "All" || item.startsWith(_selectedFilter)).toList();
+                if (filtered.isEmpty) return const Center(child: Text("Vide"));
                 return ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
-                    final entry = filtered[index];
-                    final parts = entry.split(':');
-                    final source = parts[0];
-                    final name = parts.length > 1 ? parts[1] : parts[0];
-                    
-                    IconData itemIcon = (source == "Scanner") 
-                        ? Icons.document_scanner_outlined 
-                        : Icons.history_rounded;
-
-                    return _buildHistoryItem(itemIcon, name, source);
+                    return _buildHistoryItem(Icons.history_rounded, filtered[index].split(':').last, filtered[index].split(':').first);
                   },
                 );
               },
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildAvatar(String initial) {
-    return GestureDetector(
-      onTap: () => _showLogoutDialog(context),
-      child: CircleAvatar(
-        backgroundColor: Colors.green.shade600,
-        radius: 26,
-        child: Text(initial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       ),
     );
   }
@@ -272,7 +270,7 @@ class _HomeBodyState extends State<HomeBody> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text("Besoin d'un remède ?", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                Text("Scannez votre ordonnance ou tapez le nom.", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                Text("Scannez ou tapez le nom.", style: TextStyle(color: Colors.white70, fontSize: 13)),
               ],
             ),
           ),
@@ -291,7 +289,7 @@ class _HomeBodyState extends State<HomeBody> {
         decoration: BoxDecoration(
           color: isSelected ? Colors.green.shade600 : Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isSelected ? Colors.transparent : Colors.grey.shade200),
+          border: Border.all(color: Colors.grey.shade200),
         ),
         child: Row(
           children: [
@@ -307,7 +305,6 @@ class _HomeBodyState extends State<HomeBody> {
   Widget _buildHistoryItem(IconData icon, String title, String source) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade100)),
       child: ListTile(
         leading: Icon(icon, color: Colors.green),
@@ -318,26 +315,15 @@ class _HomeBodyState extends State<HomeBody> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return const Center(child: Padding(
-      padding: EdgeInsets.all(40.0),
-      child: Text("Aucun historique", style: TextStyle(color: Colors.grey)),
-    ));
-  }
-
   void _showLogoutDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Déconnexion"),
-        content: const Text("Voulez-vous vraiment vous déconnecter de PharmConnect ?"),
+        content: const Text("Voulez-vous quitter ?"),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Annuler")),
-          TextButton(
-            onPressed: () => _logout(context), // APPEL DE LA FONCTION MODIFIÉE
-            child: const Text("Déconnexion", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Non")),
+          TextButton(onPressed: () => _logout(context), child: const Text("Oui", style: TextStyle(color: Colors.red))),
         ],
       ),
     );
