@@ -9,7 +9,8 @@ import 'package:pharma/services/history_service.dart';
 import 'package:pharma/scanner_page.dart'; 
 import 'package:pharma/chat_ai_screen.dart'; 
 // Importez votre page de création ici
- import 'package:pharma/create_pharma_screen.dart'; 
+import 'package:pharma/create_pharma_screen.dart'; 
+import 'package:pharma/nearby_pharmacies_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String userName;
@@ -257,26 +258,83 @@ class _HomeBodyState extends State<HomeBody> {
   }
 
   Widget _buildSearchPrompt() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Colors.green.shade600, Colors.green.shade400]),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: const Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: [Colors.green.shade600, Colors.green.shade400]),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Besoin d'un remède ?", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    Text("Scannez ou tapez le nom.", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                  ],
+                ),
+              ),
+              Icon(Icons.medication_liquid_rounded, size: 40, color: Colors.white54),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const NearbyPharmaciesScreen()),
+            );
+          },
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.orange.shade200),
+            ),
+            child: Row(
               children: [
-                Text("Besoin d'un remède ?", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                Text("Scannez ou tapez le nom.", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.location_on, color: Colors.orange.shade700),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Pharmacies Proches",
+                        style: TextStyle(
+                          color: Colors.orange.shade900,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        "Trouver les 5 plus proches",
+                        style: TextStyle(
+                          color: Colors.orange.shade700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(Icons.arrow_forward_ios, size: 16, color: Colors.orange.shade300),
               ],
             ),
           ),
-          Icon(Icons.medication_liquid_rounded, size: 40, color: Colors.white54),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

@@ -115,12 +115,11 @@ class Pharmacy {
     );
   }
 
-  static int _parseId(dynamic value) {
-    if (value is int) return value;
-    return int.tryParse(value?.toString() ?? '') ?? 0;
+  static String _parseId(dynamic value) {
+    return value?.toString() ?? '';
   }
 
-  final int id;
+  final String id;
   final String nom;
   final String? adresse;
   final String? telephone;

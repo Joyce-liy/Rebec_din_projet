@@ -168,21 +168,55 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     }
   }
 
-  void _applyFilter(String query) {
+  Future<void> _applyFilter(String query) async {
     setState(() {
       _isSearching = query.isNotEmpty;
-      if (query.isEmpty) {
+    });
+
+    if (query.isEmpty) {
+       setState(() {
         _filtered = _catalog;
-      } else {
-        final lower = query.toLowerCase();
-        _filtered = _catalog
-            .where(
-              (entry) =>
-                  entry.nom.toLowerCase().contains(lower) ||
-                  entry.dosage.toLowerCase().contains(lower),
-            )
-            .toList();
-      }
+      });
+      return;
+    }
+
+    // --- RECHERCHE TEMPS REEL VIA OSM ---
+    if (_userLocation != null) {
+       setState(() {
+         // Optionnel : Afficher un loading spécifique si besoin
+       });
+       
+       try {
+         final realTimeResults = await _pharmacyService.searchMedicationRealTime(
+           query,
+           latitude: _userLocation!.latitude,
+           longitude: _userLocation!.longitude,
+         );
+         
+         setState(() {
+           _filtered = realTimeResults;
+         });
+       } catch (e) {
+         debugPrint('Erreur recherche temps reel: $e');
+         // Fallback sur le catalogue local si erreur
+         _fallbackLocalFilter(query);
+       }
+    } else {
+      // Pas de localisation, recherche locale uniquement
+      _fallbackLocalFilter(query);
+    }
+  }
+
+  void _fallbackLocalFilter(String query) {
+    final lower = query.toLowerCase();
+    setState(() {
+      _filtered = _catalog
+          .where(
+            (entry) =>
+                entry.nom.toLowerCase().contains(lower) ||
+                entry.dosage.toLowerCase().contains(lower),
+          )
+          .toList();
     });
   }
 
@@ -464,73 +498,129 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     }
 
     return Column(
-      children: availabilities.map((availability) {
+      children: availabilities.asMap().entries.map((mapEntry) {
+        final index = mapEntry.key;
+        final availability = mapEntry.value;
         final pharmacy = availability.pharmacy;
         final medication = availability.medication;
         final distance = _distanceToPharmacy(pharmacy);
-        final status = medication.status;
-
-        return ListTile(
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 6,
-          ),
-          leading: Icon(Icons.local_pharmacy, color: _statusColor(status)),
-          title: Text(
-            pharmacy.nom,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(pharmacy.adresse ?? 'Adresse indisponible'),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 12,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  _buildStatusBadge(status),
-                  if (medication.quantite > 0)
-                    Text(
-                      'Qté: ${medication.quantite}',
-                      style: const TextStyle(fontWeight: FontWeight.w500),
-                    ),
-                  if (distance != null)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.directions_walk,
-                          size: 16,
-                          color: Colors.grey,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          _formatDistance(distance),
-                          style: const TextStyle(fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                ],
+        
+        // Animation simple d'apparition glissée
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 0.0, end: 1.0),
+          curve: Curves.easeOut,
+          duration: Duration(milliseconds: 400 + (index * 100)),
+          builder: (context, value, child) {
+            return Transform.translate(
+              offset: Offset(0, 20 * (1 - value)),
+              child: Opacity(
+                opacity: value,
+                child: child,
               ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const Icon(Icons.schedule, size: 16, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text('MAJ ${_formatRelativeTime(medication.lastUpdate)}'),
-                ],
+            );
+          },
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 8,
+            ),
+            leading: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                shape: BoxShape.circle,
               ),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: () => _openDirections(pharmacy),
-                  icon: const Icon(Icons.directions),
-                  label: const Text('Itineraire'),
-                  style: TextButton.styleFrom(foregroundColor: Colors.green),
+              child: Icon(Icons.business, color: Colors.green.shade700, size: 24),
+            ),
+            title: Text(
+              pharmacy.nom,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text(
+                  pharmacy.adresse ?? 'Adresse indisponible',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                 ),
-              ),
-            ],
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    // Badge "Ouvert" ou Horaire si dispo via OSM (souvent brut)
+                    /* 
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text("Disponible", style: TextStyle(color: Colors.blue, fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(width: 10),
+                    */
+                    
+                    if (distance != null)
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 14,
+                            color: Colors.green,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            _formatDistance(distance),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600, 
+                              color: Colors.black87,
+                              fontSize: 13
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 32,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _openDirections(pharmacy),
+                          icon: const Icon(Icons.directions, size: 16),
+                          label: const Text('Y aller', style: TextStyle(fontSize: 12)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.green,
+                            side: const BorderSide(color: Colors.green),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (pharmacy.telephone != null) ...[
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        height: 32,
+                        child: ElevatedButton.icon(
+                          onPressed: () => launchUrl(Uri.parse('tel:${pharmacy.telephone}')),
+                          icon: const Icon(Icons.call, size: 16),
+                          label: const Text('Appeler', style: TextStyle(fontSize: 12)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green.shade700,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                          ),
+                        ),
+                      ),
+                    ]
+                  ],
+                ),
+                const Divider(height: 24),
+              ],
+            ),
           ),
         );
       }).toList(),
@@ -581,6 +671,35 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               '${entry.dosage} • ${availabilities.length} pharmacies dans 5 km',
             ),
             children: [
+              // --- NOTE D'AVERTISSEMENT STOCK ---
+              if (_userLocation != null && availabilities.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, size: 20, color: Colors.orange.shade800),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          "Disponibilité estimée basée sur la proximité.\nContactez l'officine pour confirmer le stock.",
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange.shade900,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              // -----------------------------------
+
               if (_userLocation == null)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
