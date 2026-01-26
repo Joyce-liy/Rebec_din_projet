@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:pharma/pageconnection/login_screen.dart'; // Vérifiez que ce chemin est correct
+import 'package:firebase_auth/firebase_auth.dart'; // Import indispensable
+import 'package:pharma/pageconnection/login_screen.dart'; 
 
 class EditProfileScreen extends StatefulWidget {
   final String currentName;
@@ -27,28 +28,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  // --- FONCTION DE DÉCONNEXION ---
+  // --- FONCTION DE DÉCONNEXION CORRIGÉE ---
   Future<void> _handleLogout() async {
-    final prefs = await SharedPreferences.getInstance();
-    final GoogleSignIn googleSignIn = GoogleSignIn();
-
-    // 1. Effacer les données locales
-    await prefs.clear(); 
-    
-    // 2. Déconnecter Google
     try {
-      await googleSignIn.signOut();
-    } catch (e) {
-      print("Erreur lors de la déconnexion Google: $e");
-    }
+      // 1. Déconnexion de Firebase (Indispensable pour que ça marche)
+      await FirebaseAuth.instance.signOut();
 
-    // 3. Rediriger vers l'écran de connexion
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-      (route) => false, // Supprime tout l'historique de navigation
-    );
+      // 2. Déconnexion de Google
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      await googleSignIn.signOut();
+
+      // 3. Effacer les données locales (SharedPreferences)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear(); 
+      
+      if (!mounted) return;
+
+      // 4. Rediriger vers l'écran de connexion en vidant la pile de navigation
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false, 
+      );
+    } catch (e) {
+      print("Erreur lors de la déconnexion: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Erreur lors de la déconnexion")),
+      );
+    }
   }
 
   @override
@@ -176,7 +183,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             const SizedBox(height: 30),
 
-            // --- BOUTON DÉCONNEXION (AJOUTÉ) ---
+            // --- BOUTON DÉCONNEXION ---
             const Divider(),
             const SizedBox(height: 10),
             TextButton.icon(

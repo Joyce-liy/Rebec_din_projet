@@ -3,6 +3,7 @@ import 'package:pharma/home_screen.dart';
 import 'package:pharma/pageconnection/signup_screen.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase
 
 class LoginScreen extends StatefulWidget {
   final String? userName;
@@ -13,9 +14,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _userController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController(); // Renommé pour clarté
   final TextEditingController _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  final FirebaseAuth _auth = FirebaseAuth.instance; // Instance Firebase
   
   bool _isPasswordVisible = false;
   bool _isLoading = true; 
@@ -35,34 +37,30 @@ class _LoginScreenState extends State<LoginScreen> {
     _checkExistingSession(); 
   }
 
-  // --- LOGIQUE POUR SAUTER ONBOARDING ET LOGIN ---
+  // --- VÉRIFICATION DE LA SESSION ---
   Future<void> _checkExistingSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    
-    // On vérifie si l'utilisateur est déjà connecté
-    final bool? isLoggedIn = prefs.getBool('is_logged_in');
-    final String? savedUser = prefs.getString('user_name');
+    // Vérification Firebase d'abord (plus fiable)
+    User? currentUser = _auth.currentUser;
 
-    // Tentative Google Silencieuse
-    final GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
-
-    if (googleUser != null) {
-      _completeLogin(googleUser.displayName ?? "Utilisateur");
-    } else if (isLoggedIn == true && savedUser != null) {
-      _completeLogin(savedUser);
+    if (currentUser != null) {
+      _completeLogin(currentUser.displayName ?? "Utilisateur");
     } else {
-      if (mounted) setState(() => _isLoading = false);
+      // Si Firebase n'a pas de session, on check Google en silencieux
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signInSilently();
+      if (googleUser != null) {
+        _completeLogin(googleUser.displayName ?? "Utilisateur");
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
     }
   }
 
-  // Cette fonction sauvegarde tout et redirige
+  // Sauvegarde locale et redirection
   Future<void> _completeLogin(String name) async {
     final prefs = await SharedPreferences.getInstance();
-    
-    // On marque que l'utilisateur est connecté ET qu'il a passé l'onboarding
     await prefs.setString('user_name', name);
     await prefs.setBool('is_logged_in', true);
-    await prefs.setBool('seen_onboarding', true); // Empêche de revoir l'onboarding
+    await prefs.setBool('seen_onboarding', true);
 
     if (!mounted) return;
     Navigator.pushReplacement(
@@ -71,12 +69,21 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
+  // --- CONNEXION GOOGLE ---
   Future<void> _handleGoogleSignIn() async {
     setState(() => _isLoading = true);
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser != null) {
-        await _completeLogin(googleUser.displayName ?? "Utilisateur");
+        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+        final AuthCredential credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        
+        // On lie Google à Firebase
+        UserCredential userCredential = await _auth.signInWithCredential(credential);
+        await _completeLogin(userCredential.user?.displayName ?? "Utilisateur");
       }
     } catch (error) {
       if (mounted) {
@@ -89,13 +96,38 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  // --- CONNEXION EMAIL/PASSWORD (FIREBASE) ---
   void _handleLogin() async {
     if (_formKey.currentState!.validate()) {
       setState(() => _isLoading = true);
-      await Future.delayed(const Duration(seconds: 1)); 
       
-      String name = _userController.text.trim();
-      await _completeLogin(name);
+      try {
+        // Authentification réelle avec Firebase
+        UserCredential userCredential = await _auth.signInWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        // Récupération du nom (displayName) ou utilisation de l'email par défaut
+        String name = userCredential.user?.displayName ?? 
+                     _emailController.text.split('@')[0];
+        
+        await _completeLogin(name);
+        
+      } on FirebaseAuthException catch (e) {
+        String message = "Une erreur est survenue";
+        if (e.code == 'user-not-found') message = "Aucun utilisateur trouvé pour cet email.";
+        else if (e.code == 'wrong-password') message = "Mot de passe incorrect.";
+        else if (e.code == 'invalid-email') message = "Format d'email invalide.";
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -126,10 +158,10 @@ class _LoginScreenState extends State<LoginScreen> {
                       _buildWelcomeText(),
                       const SizedBox(height: 40),
                       _buildTextField(
-                        controller: _userController,
-                        hint: "E-mail ou Utilisateur",
-                        icon: Icons.person_outline,
-                        validator: (v) => v!.isEmpty ? "Obligatoire" : null,
+                        controller: _emailController,
+                        hint: "Email",
+                        icon: Icons.email_outlined,
+                        validator: (v) => v!.isEmpty || !v.contains('@') ? "Email invalide" : null,
                       ),
                       const SizedBox(height: 20),
                       _buildTextField(
@@ -137,12 +169,12 @@ class _LoginScreenState extends State<LoginScreen> {
                         hint: "Mot de passe",
                         icon: Icons.lock_outline,
                         isPassword: true,
-                        validator: (v) => v!.length < 6 ? "Trop court" : null,
+                        validator: (v) => v!.length < 6 ? "Minimum 6 caractères" : null,
                       ),
                       Align(
                         alignment: Alignment.centerRight,
                         child: TextButton(
-                          onPressed: () {},
+                          onPressed: () { /* Ajouter logique Reset Password ici */ },
                           child: Text(
                             "Mot de passe oublié ?",
                             style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold),
@@ -169,7 +201,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // --- WIDGETS DE STYLE (Gardés tels quels) ---
+  // --- WIDGETS DE STYLE ---
   Widget _buildHeader() => Row(mainAxisAlignment: MainAxisAlignment.center, children: [
     Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(12)), child: const Icon(Icons.medical_services, color: Colors.green, size: 30)),
     const SizedBox(width: 12),
@@ -187,6 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
       controller: controller,
       obscureText: isPassword && !_isPasswordVisible,
       validator: validator,
+      keyboardType: isPassword ? TextInputType.text : TextInputType.emailAddress,
       decoration: InputDecoration(
         hintText: hint,
         prefixIcon: Icon(icon, color: Colors.green),

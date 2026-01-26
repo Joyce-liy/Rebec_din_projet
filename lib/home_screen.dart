@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pharma/pageconnection/login_screen.dart'; 
 import 'package:pharma/profil.dart'; 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pharma/search_screen.dart';
 import 'package:pharma/services/history_service.dart';
 import 'package:pharma/scanner_page.dart'; 
@@ -28,7 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // Les pages de la barre de navigation
     final List<Widget> _pages = [
       HomeBody(userName: widget.userName),        
-      const SearchScreen(),                                
+      SearchScreen(onSearchFocusChanged: (bool isFocused) {  },),                                
       const ScannerPage(), 
       SettingsScreen(userName: widget.userName),  
     ];
@@ -372,18 +373,44 @@ class _HomeBodyState extends State<HomeBody> {
       ),
     );
   }
+void _showLogoutDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text("Déconnexion"),
+      content: const Text("Voulez-vous vraiment quitter l'application ?"),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text("Annuler"),
+        ),
+        TextButton(
+          onPressed: () async {
+            try {
+              // 1. Déconnexion Firebase
+              await FirebaseAuth.instance.signOut();
+              // 2. Déconnexion Google
+              await GoogleSignIn().signOut();
+              // 3. Nettoyage SharedPreferences
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.clear();
 
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Déconnexion"),
-        content: const Text("Voulez-vous quitter ?"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Non")),
-          TextButton(onPressed: () => _logout(context), child: const Text("Oui", style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-  }
+              if (!context.mounted) return;
+
+              // 4. Retour au Login et suppression de l'historique de navigation
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+            } catch (e) {
+              print("Erreur de déconnexion: $e");
+            }
+          },
+          child: const Text("Oui, quitter", style: TextStyle(color: Colors.red)),
+        ),
+      ],
+    ),
+  );
+}
 }

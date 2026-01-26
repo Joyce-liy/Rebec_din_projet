@@ -13,7 +13,8 @@ import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  
+  const SearchScreen({super.key, required void Function(bool isFocused) onSearchFocusChanged});
 
   @override
   _SearchScreenState createState() => _SearchScreenState();

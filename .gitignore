@@ -43,3 +43,19 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+# Secrets - NE JAMAIS COMMITER
+.env
+*.env
+.env.local
+.env.production
+
+# Builds - Ne pas commiter les APK
+build/
+*.apk
+*.aab
+
+# Clés Android
+android/key.properties
+*.keystore
+*.jks
+

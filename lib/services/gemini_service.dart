@@ -1,13 +1,14 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // ✅ AJOUTEZ CETTE LIGNE
 
 class GeminiService {
-  // ⚠️ REMPLACEZ PAR VOTRE CLÉ
-  static const String _apiKey = "AIzaSyDKTFu8aOuVZ8WrN8zu25reZ9dhuedrVfA";
+  // ✅ Récupération sécurisée depuis .env
+  static String get _apiKey => dotenv.env['GEMINI_API_KEY'] ?? '';
   
-  // ✅ Utilisation de gemini-2.5-flash (le meilleur modèle disponible)
-  static const String _apiUrl = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_apiKey";
+  static String get _apiUrl => 
+    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$_apiKey";
 
   static Future<List<String>> readHandwrittenPrescription(Uint8List imageBytes) async {
     try {

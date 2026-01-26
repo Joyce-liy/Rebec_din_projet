@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase
 import 'package:pharma/home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -12,12 +13,15 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isAccepted = false;
   bool _isPasswordVisible = false;
   bool _isConfirmVisible = false;
+  bool _isLoading = false; // Pour afficher un indicateur de chargement
 
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
+
+  final FirebaseAuth _auth = FirebaseAuth.instance;
 
   @override
   void dispose() {
@@ -28,23 +32,52 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  void _handleSignup() {
+  // --- LOGIQUE FIREBASE D'INSCRIPTION ---
+  Future<void> _handleSignup() async {
     if (_formKey.currentState!.validate()) {
       if (!_isAccepted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Veuillez accepter les conditions"),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: Colors.redAccent,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
+          const SnackBar(content: Text("Veuillez accepter les conditions"), backgroundColor: Colors.redAccent),
         );
         return;
       }
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => HomeScreen(userName: _nameController.text.trim())),
-      );
+
+      setState(() => _isLoading = true);
+
+      try {
+        // 1. Création du compte dans Firebase Auth
+        UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        // 2. Mise à jour du nom de l'utilisateur (DisplayName)
+        await userCredential.user?.updateDisplayName(_nameController.text.trim());
+
+        if (!mounted) return;
+
+        // 3. Redirection vers l'accueil
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => HomeScreen(userName: _nameController.text.trim())),
+        );
+
+      } on FirebaseAuthException catch (e) {
+        String message = "Une erreur est survenue";
+        if (e.code == 'weak-password') message = "Le mot de passe est trop faible.";
+        else if (e.code == 'email-already-in-use') message = "Cet email est déjà utilisé.";
+        else if (e.code == 'invalid-email') message = "L'adresse email n'est pas valide.";
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erreur: ${e.toString()}"), backgroundColor: Colors.redAccent),
+        );
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -55,14 +88,9 @@ class _SignupScreenState extends State<SignupScreen> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leadingWidth: 70,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 20),
-          child: IconButton(
-            icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 18),
-            onPressed: () => Navigator.pop(context),
-            style: IconButton.styleFrom(backgroundColor: Colors.grey.shade100),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 18),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       body: SafeArea(
@@ -73,30 +101,9 @@ class _SignupScreenState extends State<SignupScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // --- ICON ET TITRE ---
-                Center(
-                  child: Column(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(15),
-                        decoration: BoxDecoration(
-                          color: Colors.green.withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.person_add_rounded, color: Colors.green, size: 40),
-                      ),
-                      const SizedBox(height: 15),
-                      const Text("Créer un compte", 
-                        style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, letterSpacing: -0.5)),
-                      const Text("Rejoignez la communauté PharmaYaoundé", 
-                        style: TextStyle(fontSize: 14, color: Colors.black54)),
-                    ],
-                  ),
-                ),
+                _buildHeaderIcon(),
+                const SizedBox(height: 25),
                 
-                const SizedBox(height: 25), // Espacement réduit
-                
-                // --- CHAMPS DE SAISIE ---
                 _buildInputField(
                   label: "Nom Complet", 
                   hint: "Ex: Joyce Doe", 
@@ -117,6 +124,7 @@ class _SignupScreenState extends State<SignupScreen> {
                   isObscured: !_isPasswordVisible,
                   controller: _passwordController,
                   toggleVisibility: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
+                  validator: (v) => v!.length < 6 ? "Minimum 6 caractères" : null,
                 ),
                 _buildInputField(
                   label: "Confirmer", 
@@ -125,82 +133,86 @@ class _SignupScreenState extends State<SignupScreen> {
                   isObscured: !_isConfirmVisible,
                   controller: _confirmPasswordController,
                   toggleVisibility: () => setState(() => _isConfirmVisible = !_isConfirmVisible),
-                  validator: (value) {
-                    if (value != _passwordController.text) return "Incohérent";
-                    return null;
-                  },
+                  validator: (value) => value != _passwordController.text ? "Les mots de passe ne correspondent pas" : null,
                 ),
 
-                // --- CHECKBOX ---
-                Row(
-                  children: [
-                    SizedBox(
-                      height: 24, width: 24,
-                      child: Checkbox(
-                        value: _isAccepted,
-                        onChanged: (value) => setState(() => _isAccepted = value!),
-                        activeColor: Colors.green,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    const Expanded(
-                      child: Text(
-                        "J'accepte les Conditions et la Politique de Confidentialité.", 
-                        style: TextStyle(fontSize: 11, color: Colors.black87)
-                      ),
-                    ),
-                  ],
-                ),
-                
+                _buildCheckbox(),
                 const SizedBox(height: 25),
 
-                // --- BOUTON S'INSCRIRE ---
-                Container(
+                // --- BOUTON D'INSCRIPTION AVEC LOADING ---
+                SizedBox(
                   width: double.infinity,
                   height: 56,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(color: Colors.green.withOpacity(0.2), blurRadius: 10, offset: const Offset(0, 5))
-                    ],
-                  ),
                   child: ElevatedButton(
-                    onPressed: _handleSignup,
+                    onPressed: _isLoading ? null : _handleSignup,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.green.shade600,
-                      foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      elevation: 0,
                     ),
-                    child: const Text("S’inscrire maintenant", 
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: _isLoading 
+                      ? const CircularProgressIndicator(color: Colors.white)
+                      : const Text("S’inscrire maintenant", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
                   ),
                 ),
 
                 const SizedBox(height: 15),
-
-                // --- LIEN VERS CONNEXION ---
-                Center(
-                  child: TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: RichText(
-                      text: TextSpan(
-                        text: "Déjà un compte ? ",
-                        style: const TextStyle(color: Colors.black54, fontSize: 14),
-                        children: [
-                          TextSpan(
-                            text: "Connexion",
-                            style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
+                _buildFooter(),
               ],
             ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- WIDGETS DE COMPOSANTS ---
+
+  Widget _buildHeaderIcon() {
+    return Center(
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(15),
+            decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), shape: BoxShape.circle),
+            child: const Icon(Icons.person_add_rounded, color: Colors.green, size: 40),
+          ),
+          const SizedBox(height: 15),
+          const Text("Créer un compte", style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
+          const Text("Rejoignez la communauté PharmaYaoundé", style: TextStyle(fontSize: 14, color: Colors.black54)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCheckbox() {
+    return Row(
+      children: [
+        Checkbox(
+          value: _isAccepted,
+          onChanged: (value) => setState(() => _isAccepted = value!),
+          activeColor: Colors.green,
+        ),
+        const Expanded(
+          child: Text("J'accepte les Conditions et la Politique de Confidentialité.", style: TextStyle(fontSize: 11)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFooter() {
+    return Center(
+      child: TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: RichText(
+          text: TextSpan(
+            text: "Déjà un compte ? ",
+            style: const TextStyle(color: Colors.black54, fontSize: 14),
+            children: [
+              TextSpan(
+                text: "Connexion",
+                style: TextStyle(color: Colors.green.shade700, fontWeight: FontWeight.bold),
+              ),
+            ],
           ),
         ),
       ),
@@ -219,43 +231,28 @@ class _SignupScreenState extends State<SignupScreen> {
     String? Function(String?)? validator,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 15), // Espacement réduit entre champs
+      padding: const EdgeInsets.only(bottom: 15),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87)),
+          Text(label, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
           const SizedBox(height: 6),
           TextFormField(
             controller: controller,
             obscureText: isObscured,
             keyboardType: keyboardType,
-            style: const TextStyle(fontSize: 15),
             validator: validator ?? (value) => value!.isEmpty ? "Obligatoire" : null,
             decoration: InputDecoration(
               hintText: hint,
-              hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
               prefixIcon: Icon(icon, color: Colors.green.shade600, size: 20),
               suffixIcon: isPassword 
-                ? IconButton(
-                    icon: Icon(isObscured ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 18),
-                    onPressed: toggleVisibility,
-                  )
+                ? IconButton(icon: Icon(isObscured ? Icons.visibility_off : Icons.visibility), onPressed: toggleVisibility)
                 : null,
               filled: true,
               fillColor: Colors.grey.shade50,
-              contentPadding: const EdgeInsets.symmetric(vertical: 15),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.grey.shade200, width: 1),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.green, width: 1.5),
-              ),
-              errorBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.redAccent, width: 1),
-              ),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide(color: Colors.grey.shade200)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Colors.green)),
             ),
           ),
         ],
