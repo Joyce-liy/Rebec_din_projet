@@ -1,17 +1,18 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:pharma/search_screen.dart';
+import 'package:pharma/user_avatar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pharma/pageconnection/login_screen.dart'; 
 import 'package:pharma/profil.dart'; 
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:pharma/search_screen.dart';
 import 'package:pharma/services/history_service.dart';
 import 'package:pharma/scanner_page.dart'; 
 import 'package:pharma/chat_ai_screen.dart'; 
-// Importez votre page de création ici
-import 'package:pharma/create_pharma_screen.dart'; 
 import 'package:pharma/nearby_pharmacies_screen.dart';
+// Assurez-vous d'importer votre fichier de thème ici
+ import 'package:pharma/theme/app_theme.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final String userName;
@@ -24,66 +25,63 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
 
+  double _buttonX = 20.0;
+  double _buttonY = 100.0;
+  bool _isFirstLoad = true;
+
   @override
   Widget build(BuildContext context) {
-    // Les pages de la barre de navigation
+    if (_isFirstLoad) {
+      _buttonX = MediaQuery.of(context).size.width - 80;
+      _buttonY = MediaQuery.of(context).size.height - 230;
+      _isFirstLoad = false;
+    }
+
     final List<Widget> _pages = [
-      HomeBody(userName: widget.userName),        
-      SearchScreen(onSearchFocusChanged: (bool isFocused) {  },),                                
-      const ScannerPage(), 
-      SettingsScreen(userName: widget.userName),  
+      HomeBody(userName: widget.userName),
+      SearchScreen(onSearchFocusChanged: (bool isFocused) {}),
+      SettingsScreen(userName: widget.userName),
     ];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8),
-      extendBody: true, 
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
+      backgroundColor: AppColors.background,
+      extendBody: true,
+      body: Stack(
+        children: [
+          IndexedStack(
+            index: _currentIndex == 3 ? 2 : _currentIndex,
+            children: _pages,
+          ),
 
-      // --- BOUTONS FLOTTANTS CONDITIONNELS (ACCUEIL & RECHERCHE UNIQUEMENT) ---
-      floatingActionButton: (_currentIndex == 0 || _currentIndex == 1) 
-        ? Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-             // Bouton 1 (Haut) : Chat IA
-              FloatingActionButton(
-                heroTag: "btn_chat_ai",
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const ChatAIScreen()),
-                  );
+          // --- BOUTON IA MOVABLE ---
+          if (_currentIndex == 0 || _currentIndex == 1)
+            Positioned(
+              left: _buttonX,
+              top: _buttonY,
+              child: GestureDetector(
+                onPanUpdate: (details) {
+                  setState(() {
+                    _buttonX += details.delta.dx;
+                    _buttonY += details.delta.dy;
+                  });
                 },
-                backgroundColor: Colors.green.shade700,
-                elevation: 6,
-                shape: const CircleBorder(),
-                child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
-              ),
-
-              const SizedBox(height: 12), // Espace entre les deux
-
-              // Bouton 2 (Bas) : Créer une Pharmacie
-              Padding(
-                padding: const EdgeInsets.only(bottom: 90), // Évite la BottomNavbar
                 child: FloatingActionButton(
-                  heroTag: "btn_add_pharma",
+                  heroTag: "btn_chat_ai",
                   onPressed: () {
-                    print("Ouvrir création pharmacie");
-                     Navigator.push(context, MaterialPageRoute(builder: (context) => const CreatePharmaScreen()));
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const ChatAIScreen()),
+                    );
                   },
-                  backgroundColor: Colors.green.shade700,
-                  elevation: 4,
-                  mini: true, // Plus petit pour garder la hiérarchie
-                  child: const Icon(Icons.add_business_rounded, color: Colors.white),
+                  backgroundColor: AppColors.primary,
+                  elevation: 6,
+                  shape: const CircleBorder(),
+                  child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
                 ),
               ),
-            ],
-          )
-        : null,
-
-      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+            ),
+        ],
+      ),
       bottomNavigationBar: _buildProfessionalNavbar(),
     );
   }
@@ -92,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withOpacity(0.85),
-        border: Border(top: BorderSide(color: Colors.grey.shade200, width: 0.5)),
+        border: Border(top: BorderSide(color: AppColors.slate200, width: 0.5)),
       ),
       child: ClipRect(
         child: BackdropFilter(
@@ -117,30 +115,38 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _navbarItem(int index, IconData icon, String label) {
     bool isSelected = _currentIndex == index;
-    Color color = isSelected ? Colors.green.shade700 : Colors.grey.shade400;
+    Color color = isSelected ? AppColors.primary : AppColors.slate400;
 
     return Expanded(
       child: GestureDetector(
-        onTap: () => setState(() => _currentIndex = index),
+        onTap: () {
+          if (index == 2) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const ScannerPage()),
+            );
+          } else {
+            setState(() => _currentIndex = index);
+          }
+        },
         behavior: HitTestBehavior.opaque,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             AnimatedContainer(
-              duration: const Duration(milliseconds: 250),
+              duration: AppAnimations.normal,
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
               decoration: BoxDecoration(
-                color: isSelected ? Colors.green.withOpacity(0.1) : Colors.transparent,
-                borderRadius: BorderRadius.circular(20),
+                color: isSelected ? AppColors.primary.withOpacity(0.1) : Colors.transparent,
+                borderRadius: AppRadius.xlAll,
               ),
               child: Icon(icon, color: color, size: 26),
             ),
             const SizedBox(height: 4),
             Text(
               label,
-              style: TextStyle(
+              style: AppTypography.labelSmall.copyWith(
                 color: color,
-                fontSize: 11,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
               ),
             ),
@@ -162,24 +168,8 @@ class HomeBody extends StatefulWidget {
 class _HomeBodyState extends State<HomeBody> {
   String _selectedFilter = "All";
 
-  Future<void> _logout(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    final GoogleSignIn googleSignIn = GoogleSignIn();
-    await prefs.clear();
-    try { await googleSignIn.signOut(); } catch (e) { debugPrint(e.toString()); }
-
-    if (!mounted) return;
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const LoginScreen()),
-      (route) => false,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    String initial = widget.userName.isNotEmpty ? widget.userName[0].toUpperCase() : "J";
-
     return SafeArea(
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
@@ -187,67 +177,83 @@ class _HomeBodyState extends State<HomeBody> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header: Welcome & Avatar
             Row(
               children: [
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Bonjour,", style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
-                      Text(widget.userName, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+                      Text("Bonjour,", style: AppTypography.bodyLarge.copyWith(color: AppColors.slate500)),
+                      Text(widget.userName, style: AppTypography.displaySmall),
                     ],
                   ),
                 ),
                 GestureDetector(
                   onTap: () => _showLogoutDialog(context),
-                  child: CircleAvatar(
-                    backgroundColor: Colors.green.shade600,
-                    radius: 26,
-                    child: Text(initial, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: Container(
+                    decoration: AppDecorations.circleAvatar,
+                    child: GlobalUserAvatar(
+                      radius: 26, 
+                      userName: widget.userName,
+                    ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 30),
+            const SizedBox(height: AppSpacing.xxl),
+            
+            // Search Prompt Card
             _buildSearchPrompt(),
-            const SizedBox(height: 30),
-            const Text("Filtrer par", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.xxl),
+            
+            // Filters
+            const SectionHeader(title: "Filtrer par"),
+            const SizedBox(height: AppSpacing.md),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
                   _buildChip("All", Icons.apps_rounded),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.sm),
                   _buildChip("Recherche", Icons.search_rounded),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.sm),
                   _buildChip("Scanner", Icons.qr_code_scanner_rounded),
                 ],
               ),
             ),
-            const SizedBox(height: 35),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(_selectedFilter == "All" ? "Historique" : "Résultats $_selectedFilter",
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                TextButton(
-                  onPressed: () => HistoryService.instance.clear(),
-                  child: const Text("Effacer", style: TextStyle(color: Colors.redAccent)),
-                )
-              ],
+            const SizedBox(height: AppSpacing.xxxl),
+            
+            // History Section
+            SectionHeader(
+              title: _selectedFilter == "All" ? "Historique" : "Résultats $_selectedFilter",
+              actionText: "Effacer",
+              onActionTap: () => HistoryService.instance.clear(),
             ),
+            const SizedBox(height: AppSpacing.md),
+            
             ValueListenableBuilder<List<String>>(
               valueListenable: HistoryService.instance.history,
               builder: (context, historyList, child) {
                 final filtered = historyList.where((item) => _selectedFilter == "All" || item.startsWith(_selectedFilter)).toList();
-                if (filtered.isEmpty) return const Center(child: Text("Vide"));
+                if (filtered.isEmpty) {
+                  return Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 40.0),
+                      child: Text("Historique vide", style: AppTypography.bodyMedium),
+                    ),
+                  );
+                }
                 return ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
-                    return _buildHistoryItem(Icons.history_rounded, filtered[index].split(':').last, filtered[index].split(':').first);
+                    return _buildHistoryItem(
+                      Icons.history_rounded, 
+                      filtered[index].split(':').last, 
+                      filtered[index].split(':').first
+                    );
                   },
                 );
               },
@@ -261,76 +267,62 @@ class _HomeBodyState extends State<HomeBody> {
   Widget _buildSearchPrompt() {
     return Column(
       children: [
+        // Main Search Card (Emerald Gradient)
         Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(colors: [Colors.green.shade600, Colors.green.shade400]),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: const Row(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: AppDecorations.gradientPrimary,
+          child: Row(
             children: [
-              Expanded(
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Besoin d'un remède ?", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                    Text("Scannez ou tapez le nom.", style: TextStyle(color: Colors.white70, fontSize: 13)),
+                    Text("Besoin d'un remède ?", 
+                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Outfit')),
+                    Text("Scannez ou tapez le nom.", 
+                      style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Outfit')),
                   ],
                 ),
               ),
-              Icon(Icons.medication_liquid_rounded, size: 40, color: Colors.white54),
+              Icon(Icons.medication_liquid_rounded, size: 40, color: Colors.white.withOpacity(0.5)),
             ],
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.md),
+        
+        // Nearby Pharmacies Card (Orange/Warning Style)
         GestureDetector(
           onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const NearbyPharmaciesScreen()),
-            );
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const NearbyPharmaciesScreen()));
           },
           child: Container(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(AppSpacing.lg),
             decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.orange.shade200),
+              color: AppColors.warningLight.withOpacity(0.5),
+              borderRadius: AppRadius.xlAll,
+              border: Border.all(color: AppColors.warning.withOpacity(0.2)),
             ),
             child: Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade100,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.location_on, color: Colors.orange.shade700),
+                IconContainer(
+                  icon: Icons.location_on, 
+                  color: AppColors.warning, 
+                  size: 44, 
+                  iconSize: 22
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        "Pharmacies Proches",
-                        style: TextStyle(
-                          color: Colors.orange.shade900,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        "Trouver les 5 plus proches",
-                        style: TextStyle(
-                          color: Colors.orange.shade700,
-                          fontSize: 12,
-                        ),
-                      ),
+                      Text("Pharmacies Proches", 
+                        style: AppTypography.labelLarge.copyWith(color: AppColors.warning.withOpacity(0.9))),
+                      Text("Trouver les 5 plus proches", 
+                        style: AppTypography.bodySmall.copyWith(color: AppColors.warning.withOpacity(0.8))),
                     ],
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios, size: 16, color: Colors.orange.shade300),
+                Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.warning.withOpacity(0.5)),
               ],
             ),
           ),
@@ -343,18 +335,24 @@ class _HomeBodyState extends State<HomeBody> {
     bool isSelected = _selectedFilter == label;
     return GestureDetector(
       onTap: () => setState(() => _selectedFilter = label),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: AnimatedContainer(
+        duration: AppAnimations.fast,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? Colors.green.shade600 : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade200),
+          color: isSelected ? AppColors.primary : AppColors.surface,
+          borderRadius: AppRadius.mdAll,
+          boxShadow: isSelected ? AppShadows.soft : null,
+          border: Border.all(color: isSelected ? AppColors.primary : AppColors.slate200),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: isSelected ? Colors.white : Colors.green.shade700),
+            Icon(icon, size: 18, color: isSelected ? Colors.white : AppColors.primary),
             const SizedBox(width: 8),
-            Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.black87)),
+            Text(label, 
+              style: AppTypography.labelMedium.copyWith(
+                color: isSelected ? Colors.white : AppColors.slate700
+              )
+            ),
           ],
         ),
       ),
@@ -362,55 +360,61 @@ class _HomeBodyState extends State<HomeBody> {
   }
 
   Widget _buildHistoryItem(IconData icon, String title, String source) {
-    return Card(
+    return PremiumCard(
       margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: BorderSide(color: Colors.grey.shade100)),
-      child: ListTile(
-        leading: Icon(icon, color: Colors.green),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text("Via $source"),
-        trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        children: [
+          IconContainer(icon: icon, color: AppColors.primary, size: 40, iconSize: 20),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTypography.labelLarge),
+                Text("Via $source", style: AppTypography.bodySmall),
+              ],
+            ),
+          ),
+          Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.slate300),
+        ],
       ),
     );
   }
-void _showLogoutDialog(BuildContext context) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text("Déconnexion"),
-      content: const Text("Voulez-vous vraiment quitter l'application ?"),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text("Annuler"),
-        ),
-        TextButton(
-          onPressed: () async {
-            try {
-              // 1. Déconnexion Firebase
-              await FirebaseAuth.instance.signOut();
-              // 2. Déconnexion Google
-              await GoogleSignIn().signOut();
-              // 3. Nettoyage SharedPreferences
-              final prefs = await SharedPreferences.getInstance();
-              await prefs.clear();
 
-              if (!context.mounted) return;
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Déconnexion"),
+        content: const Text("Voulez-vous vraiment quitter l'application ?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: Text("Annuler", style: TextStyle(color: AppColors.slate500))
+          ),
+          TextButton(
+            onPressed: () async {
+              try {
+                await FirebaseAuth.instance.signOut();
+                await GoogleSignIn().signOut();
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.clear();
 
-              // 4. Retour au Login et suppression de l'historique de navigation
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
-              );
-            } catch (e) {
-              print("Erreur de déconnexion: $e");
-            }
-          },
-          child: const Text("Oui, quitter", style: TextStyle(color: Colors.red)),
-        ),
-      ],
-    ),
-  );
-}
+                if (!context.mounted) return;
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  (route) => false,
+                );
+              } catch (e) {
+                print("Erreur de déconnexion: $e");
+              }
+            },
+            child: const Text("Oui, quitter", style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+  }
 }

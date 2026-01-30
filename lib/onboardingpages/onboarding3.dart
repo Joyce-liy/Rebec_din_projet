@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:lottie/lottie.dart'; // 1. Import de Lottie
+import 'package:lottie/lottie.dart';
 import 'package:pharma/pageconnection/login_screen.dart';
+// Importez votre fichier de design system ici
+ import 'package:pharma/theme/app_theme.dart'; 
 
 class Onboarding3 extends StatelessWidget {
   const Onboarding3({super.key});
@@ -8,23 +10,21 @@ class Onboarding3 extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE0F7F4), // Bleu clair
+      backgroundColor: AppColors.background, // Utilisation de la couleur de fond du système
       body: SafeArea(
         child: Column(
           children: [
-            // Bouton "Passer"
+            // Bouton "Passer" stylisé
             Align(
               alignment: Alignment.topRight,
-              child: TextButton(
-                onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (context) => const LoginScreen(userName: '',)),
-                  );
-                },
-                child: const Text(
-                  "passer", 
-                  style: TextStyle(color: Colors.black54), 
+              child: Padding(
+                padding: const EdgeInsets.only(right: AppSpacing.md),
+                child: TextButton(
+                  onPressed: () => _navigateToLogin(context),
+                  child: Text(
+                    "passer", 
+                    style: AppTypography.labelMedium.copyWith(color: AppColors.slate400), 
+                  ),
                 ),
               ),
             ),
@@ -33,44 +33,40 @@ class Onboarding3 extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Animation Lottie dans un cercle blanc
+                  // Animation Lottie dans un conteneur avec ombre douce
                   Container(
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: Colors.white,
                       shape: BoxShape.circle,
+                      boxShadow: AppShadows.medium, // Ombre du design system
                     ),
-                    padding: const EdgeInsets.all(30), // Un peu plus de padding pour l'animation
+                    padding: const EdgeInsets.all(AppSpacing.xxl),
                     child: Lottie.asset(
-                      'assets/Qr Code Scanner.json', // Votre fichier Lottie
+                      'assets/Qr Code Scanner.json',
                       height: 220,
                       repeat: true,
                       animate: true,
                     ),
                   ),
-                  const SizedBox(height: 50),
+                  const SizedBox(height: AppSpacing.huge),
                   
-                  // Titre
-                  const Text(
+                  // Titre avec typographie premium
+                  Text(
                     "Scannez et trouvez",
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.black,
-                    ),
+                    style: AppTypography.displaySmall,
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: AppSpacing.lg),
                   
-                  // Description
-                  const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 40),
+                  // Description avec typographie corps de texte
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
                     child: Text(
-                      "Prenez votre ordonnance en photo ou tapez le nom du medicament. On s’occupe du reste.",
+                      "Prenez votre ordonnance en photo ou tapez le nom du médicament. On s’occupe du reste.",
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.black87,
-                        height: 1.4,
+                      style: AppTypography.bodyLarge.copyWith(
+                        color: AppColors.slate600,
+                        height: 1.5,
                       ),
                     ),
                   ),
@@ -78,43 +74,26 @@ class Onboarding3 extends StatelessWidget {
               ),
             ),
 
-            // Bouton "C'est parti !"
+            // Bouton "C'est parti !" utilisant le GradientButton premium
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => const LoginScreen(userName: '',)),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green, // Bleu foncé
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                  ),
-                  child: const Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "C'est parti !", 
-                        style: TextStyle(color: Colors.white, fontSize: 18),
-                      ),
-                      SizedBox(width: 10),
-                      Icon(Icons.arrow_forward, color: Colors.white),
-                    ],
-                  ),
-                ),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
+              child: GradientButton(
+                text: "C'est parti !",
+                icon: Icons.arrow_forward_rounded,
+                onPressed: () => _navigateToLogin(context),
               ),
             ),
-            const SizedBox(height: 60),
+            const SizedBox(height: AppSpacing.massive),
           ],
         ),
       ),
+    );
+  }
+
+  void _navigateToLogin(BuildContext context) {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginScreen(userName: '',)),
     );
   }
 }

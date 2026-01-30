@@ -13,19 +13,18 @@ import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
 
 class SearchScreen extends StatefulWidget {
-  
   const SearchScreen({super.key, required void Function(bool isFocused) onSearchFocusChanged});
 
   @override
   _SearchScreenState createState() => _SearchScreenState();
 }
-class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderStateMixin{
+
+class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderStateMixin {
   static const double _radiusMeters = 5000;
   late stt.SpeechToText _speech;
   late AnimationController _animationController;
   Timer? _silenceTimer;
   bool _isListening = false;
-  //bool _isListening = false;
   final PharmacyService _pharmacyService = PharmacyService();
   final LocationService _locationService = LocationService();
   final TextEditingController _searchController = TextEditingController();
@@ -175,35 +174,30 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     });
 
     if (query.isEmpty) {
-       setState(() {
+      setState(() {
         _filtered = _catalog;
       });
       return;
     }
 
-    // --- RECHERCHE TEMPS REEL VIA OSM ---
     if (_userLocation != null) {
-       setState(() {
-         // Optionnel : Afficher un loading spécifique si besoin
-       });
-       
-       try {
-         final realTimeResults = await _pharmacyService.searchMedicationRealTime(
-           query,
-           latitude: _userLocation!.latitude,
-           longitude: _userLocation!.longitude,
-         );
-         
-         setState(() {
-           _filtered = realTimeResults;
-         });
-       } catch (e) {
-         debugPrint('Erreur recherche temps reel: $e');
-         // Fallback sur le catalogue local si erreur
-         _fallbackLocalFilter(query);
-       }
+      setState(() {});
+
+      try {
+        final realTimeResults = await _pharmacyService.searchMedicationRealTime(
+          query,
+          latitude: _userLocation!.latitude,
+          longitude: _userLocation!.longitude,
+        );
+
+        setState(() {
+          _filtered = realTimeResults;
+        });
+      } catch (e) {
+        debugPrint('Erreur recherche temps reel: $e');
+        _fallbackLocalFilter(query);
+      }
     } else {
-      // Pas de localisation, recherche locale uniquement
       _fallbackLocalFilter(query);
     }
   }
@@ -261,11 +255,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   Color _statusColor(StockStatus? status) {
     switch (status) {
       case StockStatus.enStock:
-        return Colors.green;
+        return const Color(0xFF10B981);
       case StockStatus.stockLimite:
-        return Colors.orange;
+        return const Color(0xFFF59E0B);
       case StockStatus.rupture:
-        return Colors.red;
+        return const Color(0xFFEF4444);
       default:
         return Colors.grey;
     }
@@ -389,10 +383,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   Widget _buildStatusBadge(StockStatus status) {
     final color = _statusColor(status);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(12),
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withOpacity(0.3), width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -405,7 +400,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           const SizedBox(width: 6),
           Text(
             status.label,
-            style: TextStyle(color: color, fontWeight: FontWeight.w600),
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
@@ -416,20 +415,31 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     if (_loadingLocation) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF10B981).withOpacity(0.1),
+              const Color(0xFF059669).withOpacity(0.05),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
         ),
         child: Row(
           children: const [
             SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF10B981)),
             ),
             SizedBox(width: 12),
-            Expanded(child: Text('Localisation en cours...')),
+            Expanded(
+              child: Text(
+                'Localisation en cours...',
+                style: TextStyle(fontWeight: FontWeight.w500, color: Color(0xFF047857)),
+              ),
+            ),
           ],
         ),
       );
@@ -438,25 +448,44 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     if (_userLocation != null) {
       return Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            colors: [
+              const Color(0xFF10B981).withOpacity(0.1),
+              const Color(0xFF059669).withOpacity(0.05),
+            ],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
         ),
         child: Row(
           children: [
-            const Icon(Icons.my_location, color: Colors.green),
-            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.my_location, color: Color(0xFF047857), size: 20),
+            ),
+            const SizedBox(width: 12),
             const Expanded(
               child: Text(
-                'Localisation activee pour un tri par distance.',
-                style: TextStyle(fontWeight: FontWeight.w500),
+                'Localisation activée',
+                style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF047857)),
               ),
             ),
-            IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.green),
-              tooltip: 'Rafraichir la position',
-              onPressed: _refreshLocation,
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: _refreshLocation,
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  child: const Icon(Icons.refresh, color: Color(0xFF10B981), size: 20),
+                ),
+              ),
             ),
           ],
         ),
@@ -465,23 +494,58 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.orange.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFFF59E0B).withOpacity(0.1),
+            const Color(0xFFD97706).withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.2)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.location_off, color: Colors.orange),
-          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF59E0B).withOpacity(0.2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.location_off, color: Color(0xFFD97706), size: 20),
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
               _locationUnavailable
-                  ? 'Localisation indisponible. Autorisez l\'acces GPS pour trier les pharmacies par distance.'
-                  : 'Activez votre localisation pour un tri par distance.',
+                  ? 'Localisation indisponible'
+                  : 'Activez votre localisation',
+              style: const TextStyle(fontWeight: FontWeight.w500, color: Color(0xFFD97706)),
             ),
           ),
-          TextButton(onPressed: _refreshLocation, child: const Text('Activer')),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _refreshLocation,
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Activer',
+                  style: TextStyle(
+                    color: Color(0xFFD97706),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -492,9 +556,21 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     List<MedicationAvailability> availabilities,
   ) {
     if (availabilities.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Text('Aucune officine n\'a ete trouvee dans un rayon de 5 km.'),
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
+              const SizedBox(height: 12),
+              Text(
+                'Aucune pharmacie dans un rayon de 5 km',
+                style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -505,122 +581,156 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         final pharmacy = availability.pharmacy;
         final medication = availability.medication;
         final distance = _distanceToPharmacy(pharmacy);
-        
-        // Animation simple d'apparition glissée
+
         return TweenAnimationBuilder<double>(
           tween: Tween(begin: 0.0, end: 1.0),
           curve: Curves.easeOut,
-          duration: Duration(milliseconds: 400 + (index * 100)),
+          duration: Duration(milliseconds: 300 + (index * 80)),
           builder: (context, value, child) {
             return Transform.translate(
-              offset: Offset(0, 20 * (1 - value)),
+              offset: Offset(0, 15 * (1 - value)),
               child: Opacity(
                 opacity: value,
                 child: child,
               ),
             );
           },
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
-            leading: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.green.shade50,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.business, color: Colors.green.shade700, size: 24),
-            ),
-            title: Text(
-              pharmacy.nom,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-            ),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 4),
-                Text(
-                  pharmacy.adresse ?? 'Adresse indisponible',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey[200]!),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    // Badge "Ouvert" ou Horaire si dispo via OSM (souvent brut)
-                    /* 
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(4),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              const Color(0xFF10B981).withOpacity(0.1),
+                              const Color(0xFF059669).withOpacity(0.05),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          Icons.local_pharmacy,
+                          color: const Color(0xFF10B981),
+                          size: 24,
+                        ),
                       ),
-                      child: const Text("Disponible", style: TextStyle(color: Colors.blue, fontSize: 12, fontWeight: FontWeight.bold)),
-                    ),
-                    const SizedBox(width: 10),
-                    */
-                    
-                    if (distance != null)
-                      Row(
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              pharmacy.nom,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                color: Color(0xFF1F2937),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              pharmacy.adresse ?? 'Adresse indisponible',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 13,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (distance != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Icon(
-                            Icons.location_on_outlined,
+                            Icons.near_me,
                             size: 14,
-                            color: Colors.green,
+                            color: Color(0xFF10B981),
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 6),
                           Text(
                             _formatDistance(distance),
                             style: const TextStyle(
-                              fontWeight: FontWeight.w600, 
-                              color: Colors.black87,
-                              fontSize: 13
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF047857),
+                              fontSize: 13,
                             ),
                           ),
                         ],
                       ),
+                    ),
                   ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: SizedBox(
-                        height: 32,
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
                         child: OutlinedButton.icon(
                           onPressed: () => _openDirections(pharmacy),
-                          icon: const Icon(Icons.directions, size: 16),
-                          label: const Text('Y aller', style: TextStyle(fontSize: 12)),
+                          icon: const Icon(Icons.directions, size: 18),
+                          label: const Text('Itinéraire', style: TextStyle(fontSize: 13)),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.green,
-                            side: const BorderSide(color: Colors.green),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            foregroundColor: const Color(0xFF10B981),
+                            side: const BorderSide(color: Color(0xFF10B981), width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
                           ),
                         ),
                       ),
-                    ),
-                    if (pharmacy.telephone != null) ...[
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        height: 32,
-                        child: ElevatedButton.icon(
-                          onPressed: () => launchUrl(Uri.parse('tel:${pharmacy.telephone}')),
-                          icon: const Icon(Icons.call, size: 16),
-                          label: const Text('Appeler', style: TextStyle(fontSize: 12)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green.shade700,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      if (pharmacy.telephone != null) ...[
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => launchUrl(Uri.parse('tel:${pharmacy.telephone}')),
+                            icon: const Icon(Icons.call, size: 18),
+                            label: const Text('Appeler', style: TextStyle(fontSize: 13)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF10B981),
+                              foregroundColor: Colors.white,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
                           ),
                         ),
-                      ),
-                    ]
-                  ],
-                ),
-                const Divider(height: 24),
-              ],
+                      ],
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -630,9 +740,29 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
 
   Widget _buildSearchResults() {
     if (_filtered.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.only(top: 20),
-        child: Center(child: Text('Aucun medicament trouve')),
+      return Padding(
+        padding: const EdgeInsets.all(40),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
+              const SizedBox(height: 16),
+              Text(
+                'Aucun médicament trouvé',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Essayez avec un autre terme de recherche',
+                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -648,94 +778,131 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         final color = _statusColor(status);
 
         return Card(
-          elevation: 2,
+          elevation: 0,
+          margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(16),
+            side: BorderSide(color: Colors.grey[200]!),
           ),
-          child: ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
-            leading: Container(
-              width: 12,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(4),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              childrenPadding: const EdgeInsets.only(bottom: 12),
+              leading: Container(
+                width: 4,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: color,
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            title: Text(
-              entry.nom,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-            subtitle: Text(
-              '${entry.dosage} • ${availabilities.length} pharmacies dans 5 km',
-            ),
-            children: [
-              // --- NOTE D'AVERTISSEMENT STOCK ---
-              if (_userLocation != null && availabilities.isNotEmpty)
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, size: 20, color: Colors.orange.shade800),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          "Disponibilité estimée basée sur la proximité.\nContactez l'officine pour confirmer le stock.",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.orange.shade900,
-                            fontStyle: FontStyle.italic,
-                          ),
+              title: Text(
+                entry.nom,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 15,
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        entry.dosage,
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${availabilities.length} pharmacies',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF047857),
                         ),
                       ),
-                    ],
+                    ),
+                  ],
+                ),
+              ),
+              children: [
+                if (_userLocation != null && availabilities.isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFDE68A)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 20, color: Colors.amber[800]),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            "Disponibilité estimée. Contactez la pharmacie pour confirmer.",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.amber[900],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              // -----------------------------------
-
-              if (_userLocation == null)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Text(
-                    'Activez la localisation pour filtrer les officines proches. Affichage de toutes les pharmacies disponibles.',
+                if (_userLocation == null)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Text(
+                      'Activez la localisation pour filtrer les pharmacies proches.',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    ),
                   ),
-                ),
-              if (_userLocation != null && availabilities.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Text(
-                    'Aucune pharmacie dans un rayon de 5 km. Affichez la carte pour explorer.',
+                if (_userLocation != null && availabilities.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Text(
+                      'Aucune pharmacie dans un rayon de 5 km.',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                    ),
                   ),
-                ),
-              if (availabilities.isNotEmpty)
-                _buildAvailabilityTiles(entry, availabilities),
-              Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () => _openMap(entry),
-                    icon: const Icon(Icons.map_outlined),
-                    label: const Text('Afficher sur la carte'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
+                if (availabilities.isNotEmpty) _buildAvailabilityTiles(entry, availabilities),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: () => _openMap(entry),
+                      icon: const Icon(Icons.map_outlined, size: 20),
+                      label: const Text(
+                        'Voir sur la carte',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -747,11 +914,19 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
       valueListenable: HistoryService.instance.history,
       builder: (context, history, _) {
         if (history.isEmpty) {
-          return const Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Aucune recherche recente',
-              style: TextStyle(color: Colors.grey),
+          return Padding(
+            padding: const EdgeInsets.all(20),
+            child: Center(
+              child: Column(
+                children: [
+                  Icon(Icons.history, size: 48, color: Colors.grey[300]),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Aucune recherche récente',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                  ),
+                ],
+              ),
             ),
           );
         }
@@ -760,7 +935,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: history.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 8),
+          separatorBuilder: (context, index) => const SizedBox(height: 6),
           itemBuilder: (context, index) {
             final entry = history[index];
             final parts = entry.split(':');
@@ -770,15 +945,46 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             final IconData icon =
                 source == 'Scanner' ? Icons.document_scanner_outlined : Icons.history;
 
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-              leading: Icon(icon, color: Colors.green),
-              title: Text(term),
-              subtitle: Text(source),
-              onTap: () => _onRecentSearchSelected(term),
-              trailing: IconButton(
-                icon: const Icon(Icons.close, size: 18),
-                onPressed: () => HistoryService.instance.remove(entry),
+            return Container(
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey[200]!),
+              ),
+              child: ListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(icon, color: const Color(0xFF10B981), size: 20),
+                ),
+                title: Text(
+                  term,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                subtitle: Text(
+                  source,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+                onTap: () => _onRecentSearchSelected(term),
+                trailing: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: () => HistoryService.instance.remove(entry),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8),
+                      child: Icon(Icons.close, size: 18, color: Colors.grey[400]),
+                    ),
+                  ),
+                ),
               ),
             );
           },
@@ -790,20 +996,30 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF9FAFB),
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black, size: 20),
+          icon: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.arrow_back_ios_new, color: Colors.black87, size: 18),
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           IconButton(
-            icon: const Icon(
-              Icons.account_circle,
-              color: Colors.black,
-              size: 30,
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.account_circle_outlined, color: Colors.black87, size: 22),
             ),
             onPressed: () {
               Navigator.pushReplacement(
@@ -813,7 +1029,14 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             },
           ),
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.green),
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.refresh, color: Color(0xFF10B981), size: 22),
+            ),
             tooltip: 'Recharger',
             onPressed: () async {
               await _pharmacyService.invalidateCache();
@@ -824,7 +1047,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         ],
       ),
       body: _loadingCatalog
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(color: Color(0xFF10B981)),
+            )
           : SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
               child: Padding(
@@ -832,151 +1057,218 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const SizedBox(height: 24),
+                    const Text(
+                      'Recherche de Médicaments',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1F2937),
+                        letterSpacing: -0.5,
+                      ),
+                    ),
                     const SizedBox(height: 20),
-                    const Center(
-                      child: Text(
-                        'La Recherche',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
+                    _buildLocationBanner(),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: _onQueryChanged,
+                              onSubmitted: (value) {
+                                if (value.trim().isNotEmpty) {
+                                  HistoryService.instance.add(value);
+                                  _applyFilter(value);
+                                }
+                              },
+                              style: const TextStyle(fontSize: 15),
+                              decoration: InputDecoration(
+                                hintText: 'Rechercher un médicament...',
+                                hintStyle: TextStyle(color: Colors.grey[400], fontSize: 15),
+                                prefixIcon: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Icon(
+                                    Icons.search,
+                                    color: Colors.grey[400],
+                                    size: 24,
+                                  ),
+                                ),
+                                suffixIcon: _isSearching
+                                    ? Material(
+                                        color: Colors.transparent,
+                                        child: InkWell(
+                                          borderRadius: BorderRadius.circular(20),
+                                          onTap: _clearSearch,
+                                          child: Padding(
+                                            padding: const EdgeInsets.all(12),
+                                            child: Icon(
+                                              Icons.close,
+                                              color: Colors.grey[400],
+                                              size: 20,
+                                            ),
+                                          ),
+                                        ),
+                                      )
+                                    : null,
+                                filled: true,
+                                fillColor: Colors.white,
+                                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: BorderSide(color: Colors.grey[200]!),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                  borderSide: const BorderSide(color: Color(0xFF10B981), width: 2),
+                                ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
+                        const SizedBox(width: 12),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              if (_searchController.text.trim().isNotEmpty) {
+                                HistoryService.instance.add(_searchController.text);
+                                _applyFilter(_searchController.text);
+                                FocusScope.of(context).unfocus();
+                              } else {
+                                _listen();
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: _isListening
+                                      ? [const Color(0xFFEF4444), const Color(0xFFDC2626)]
+                                      : (_searchController.text.isNotEmpty
+                                          ? [const Color(0xFF10B981), const Color(0xFF059669)]
+                                          : [const Color(0xFF10B981), const Color(0xFF059669)]),
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: (_isListening
+                                            ? const Color(0xFFEF4444)
+                                            : const Color(0xFF10B981))
+                                        .withOpacity(0.3),
+                                    blurRadius: 12,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                _isListening
+                                    ? Icons.stop_rounded
+                                    : (_searchController.text.isNotEmpty
+                                        ? Icons.send_rounded
+                                        : Icons.mic),
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            const Color(0xFF10B981).withOpacity(0.9),
+                            const Color(0xFF059669),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF10B981).withOpacity(0.3),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (context) => const ScannerPage()),
+                            );
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 18),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: const [
+                                Icon(Icons.camera_alt_outlined, color: Colors.white, size: 24),
+                                SizedBox(width: 12),
+                                Text(
+                                  'Scanner une ordonnance',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      _isSearching ? 'Résultats trouvés' : 'Recherches récentes',
+                      style: const TextStyle(
+                        color: Color(0xFF1F2937),
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.3,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _buildLocationBanner(),
-                    const SizedBox(height: 24),
-                    const Center(
-                      child: Text(
-                        'Bonjour, quel medicament recherchez-vous?',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                                      Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _searchController,
-                          onChanged: _onQueryChanged,
-                          onSubmitted: (value) {
-                            if (value.trim().isNotEmpty) {
-                              HistoryService.instance.add(value);
-                              _applyFilter(value);
-                            }
-                          },
-                          decoration: InputDecoration(
-                            hintText: 'Rechercher un medicament',
-                            hintStyle: TextStyle(color: Colors.grey[400]),
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: Colors.green,
-                              size: 30,
-                            ),
-                            suffixIcon: _isSearching
-                                ? IconButton(
-                                    onPressed: _clearSearch,
-                                    icon: const Icon(
-                                      Icons.clear,
-                                      color: Colors.grey,
-                                    ),
-                                  )
-                                : null,
-                            filled: true,
-                            fillColor: Colors.white,
-                            contentPadding: const EdgeInsets.symmetric(vertical: 15),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(30),
-                              borderSide: BorderSide(color: Colors.grey[300]!),
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(30),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 15),
-                      // --- BOUTON DYNAMIQUE (VOCAL OU ENVOYER) ---
-                      GestureDetector(
-                        onTap: () {
-                          if (_searchController.text.trim().isNotEmpty) {
-                            // Action ENVOYER
-                            HistoryService.instance.add(_searchController.text);
-                            _applyFilter(_searchController.text);
-                            FocusScope.of(context).unfocus(); // Ferme le clavier
-                          } else {
-                            // Action VOCAL
-                            _listen();
-                          }
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            // Change de couleur : Rouge si écoute, Bleu si texte présent, Vert sinon
-                            color: _isListening 
-                                ? Colors.red 
-                                : (_searchController.text.isNotEmpty ? Colors.green : Colors.green),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            // Change d'icône : Stop si écoute, Send si texte présent, Mic sinon
-                            _isListening 
-                                ? Icons.stop 
-                                : (_searchController.text.isNotEmpty ? Icons.send : Icons.mic),
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                    const SizedBox(height: 30),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 55,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => const ScannerPage()),
-                          );
-                        },
-                        icon: const Icon(Icons.camera_alt_outlined, color: Colors.white),
-                        label: const Text('Scanner une ordonnance',
-                            style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green[800],
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 30),
-                    Text(
-                      _isSearching
-                          ? 'Resultats trouves'
-                          : 'Historique des recherches recentes',
-                      style: const TextStyle(color: Colors.black87, fontSize: 15),
-                    ),
-                    const SizedBox(height: 10),
                     _isSearching
                         ? _buildSearchResults()
                         : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               _buildHistoryList(),
-                              const SizedBox(height: 30),
+                              const SizedBox(height: 32),
                               const Text(
-                                'Medicaments disponibles',
+                                'Médicaments disponibles',
                                 style: TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold),
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1F2937),
+                                  letterSpacing: -0.3,
+                                ),
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 16),
                               _buildSearchResults(),
                             ],
                           ),

@@ -1,8 +1,12 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:firebase_auth/firebase_auth.dart'; // Import indispensable
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:pharma/pageconnection/login_screen.dart'; 
+import 'package:image_picker/image_picker.dart';
+// Importez votre fichier de design system ici
+ import 'package:pharma/theme/app_theme.dart'; 
 
 class EditProfileScreen extends StatefulWidget {
   final String currentName;
@@ -15,6 +19,8 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
+  File? _imageFile; 
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -28,55 +34,49 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  // --- FONCTION DE DÉCONNEXION CORRIGÉE ---
-  Future<void> _handleLogout() async {
+  Future<void> _pickImage() async {
     try {
-      // 1. Déconnexion de Firebase (Indispensable pour que ça marche)
-      await FirebaseAuth.instance.signOut();
-
-      // 2. Déconnexion de Google
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-      await googleSignIn.signOut();
-
-      // 3. Effacer les données locales (SharedPreferences)
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear(); 
-      
-      if (!mounted) return;
-
-      // 4. Rediriger vers l'écran de connexion en vidant la pile de navigation
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (route) => false, 
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
       );
+
+      if (pickedFile != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_profile_pic', pickedFile.path);
+
+        setState(() {
+          _imageFile = File(pickedFile.path);
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Photo de profil mise à jour !")),
+        );
+      }
     } catch (e) {
-      print("Erreur lors de la déconnexion: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Erreur lors de la déconnexion")),
-      );
+      debugPrint("Erreur sélection image: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    String name = _nameController.text.trim();
+    String initial = name.isNotEmpty ? name[0].toUpperCase() : "?";
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF8), 
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text("Profil", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        title: const Text("Modifier le Profil"),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new, color: Colors.black, size: 20),
+          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 24.0),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
         child: Column(
           children: [
-            const SizedBox(height: 20),
+            const SizedBox(height: AppSpacing.xxl),
             
             // --- SECTION AVATAR ---
             Center(
@@ -87,118 +87,90 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     height: 120,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
+                      color: AppColors.primary.withOpacity(0.1),
                       border: Border.all(color: Colors.white, width: 4),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 15, offset: const Offset(0, 5))
-                      ],
-                      image: const DecorationImage(
-                        image: NetworkImage("https://i.pravatar.cc/300"),
-                        fit: BoxFit.cover,
-                      ),
+                      boxShadow: AppShadows.medium,
+                      image: _imageFile != null 
+                        ? DecorationImage(image: FileImage(_imageFile!), fit: BoxFit.cover)
+                        : null,
                     ),
+                    child: _imageFile == null 
+                      ? Center(
+                          child: Text(
+                            initial,
+                            style: AppTypography.displayMedium.copyWith(color: AppColors.primary),
+                          ),
+                        )
+                      : null,
                   ),
                   Positioned(
                     bottom: 0,
                     right: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: const BoxDecoration(color: Colors.green, shape: BoxShape.circle),
-                      child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                    child: GestureDetector(
+                      onTap: _pickImage,
+                      child: Container(
+                        padding: const EdgeInsets.all(AppSpacing.xs),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: AppShadows.soft,
+                        ),
+                        child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 20),
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
             
-            const SizedBox(height: 40),
+            const SizedBox(height: AppSpacing.huge),
 
             // --- CHAMP NOM D'UTILISATEUR ---
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
                 "Nom d'utilisateur",
-                style: TextStyle(color: Colors.grey.shade600, fontWeight: FontWeight.w600, fontSize: 14),
+                style: AppTypography.labelMedium.copyWith(color: AppColors.slate500),
               ),
             ),
-            const SizedBox(height: 10),
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))
-                ],
-              ),
-              child: TextField(
-                controller: _nameController,
-                style: const TextStyle(fontWeight: FontWeight.bold),
-                decoration: const InputDecoration(
-                  hintText: "Votre nom",
-                  prefixIcon: Icon(Icons.person_rounded, color: Colors.green),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 18),
-                ),
+            const SizedBox(height: AppSpacing.sm),
+            
+            // Utilisation du style d'input du design system
+            TextField(
+              controller: _nameController,
+              onChanged: (value) => setState(() {}),
+              style: AppTypography.bodyLarge.copyWith(fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: "Votre nom",
+                prefixIcon: const Icon(Icons.person_outline_rounded),
               ),
             ),
 
-            const SizedBox(height: 40),
+            const SizedBox(height: AppSpacing.massive),
 
-            // --- BOUTON ENREGISTRER ---
-            Container(
-              width: double.infinity,
-              height: 58,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                gradient: LinearGradient(
-                  colors: [Colors.green.shade700, Colors.green.shade500],
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.green.withOpacity(0.3),
-                    blurRadius: 12,
-                    offset: const Offset(0, 6),
-                  )
-                ],
-              ),
-              child: ElevatedButton(
-                onPressed: () {
-                  String newName = _nameController.text.trim();
-                  if (newName.isNotEmpty) {
-                    Navigator.pop(context, newName);
-                  } else {
-                    _showErrorSnackBar(context);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.transparent,
-                  shadowColor: Colors.transparent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                ),
-                child: const Text(
-                  "Enregistrer les modifications",
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
+            // --- BOUTON ENREGISTRER (Utilisant GradientButton du Design System) ---
+            GradientButton(
+              text: "Enregistrer les modifications",
+              onPressed: () {
+                if (_nameController.text.trim().isNotEmpty) {
+                  Navigator.pop(context, _nameController.text.trim());
+                } else {
+                  _showErrorSnackBar(context);
+                }
+              },
             ),
 
-            const SizedBox(height: 30),
-
-            // --- BOUTON DÉCONNEXION ---
-            const Divider(),
-            const SizedBox(height: 10),
-            TextButton.icon(
-              onPressed: _handleLogout,
-              icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
-              label: const Text(
-                "Se déconnecter de l'application",
-                style: TextStyle(
-                  color: Colors.redAccent, 
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16
-                ),
+            const SizedBox(height: AppSpacing.xl),
+            
+            // Bouton secondaire pour la déconnexion
+            TextButton(
+              onPressed: () => _showLogoutDialog(context),
+              child: Text(
+                "Déconnexion",
+                style: AppTypography.buttonMedium.copyWith(color: AppColors.error),
               ),
             ),
-            const SizedBox(height: 20),
           ],
         ),
       ),
@@ -209,10 +181,46 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text("Le nom ne peut pas être vide"),
-        backgroundColor: Colors.redAccent,
+        backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Déconnexion"),
+        content: const Text("Voulez-vous vraiment vous déconnecter ?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: const Text("Annuler")
+          ),
+          TextButton(
+            onPressed: _handleLogout,
+            child: const Text("Déconnexion", style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleLogout() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+      await GoogleSignIn().signOut();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.clear(); 
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false, 
+      );
+    } catch (e) {
+      debugPrint("Erreur déconnexion: $e");
+    }
   }
 }
