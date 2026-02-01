@@ -1,14 +1,18 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'dart:convert';
+
 import 'package:pharma/models/pharmacy.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pharma/services/location_service.dart';
 import 'package:pharma/services/pharmacy_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
+import 'package:pharma/theme/app_theme.dart';
 
 enum _ConversationStage {
   idle,
@@ -37,13 +41,15 @@ class ChatAIScreen extends StatefulWidget {
   State<ChatAIScreen> createState() => _ChatAIScreenState();
 }
 
-class _ChatAIScreenState extends State<ChatAIScreen> {
+class _ChatAIScreenState extends State<ChatAIScreen>
+    with SingleTickerProviderStateMixin {
   final SpeechToText _speechToText = SpeechToText();
   final FlutterTts _flutterTts = FlutterTts();
   final PharmacyService _pharmacyService = PharmacyService();
   final LocationService _locationService = LocationService();
+  
   bool _isListening = false;
-  String _aiResponse = "Appuyez sur le micro pour parler";
+  String _aiResponse = "Appuyez sur le micro pour commencer";
   _ConversationStage _stage = _ConversationStage.idle;
   List<_PharmacyOption> _currentOptions = const [];
   _PharmacyOption? _selectedOption;
@@ -55,14 +61,114 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
   bool _isPreloading = false;
   bool _ttsReady = false;
   Future<void>? _ttsInitTask;
+  
+  late AnimationController _pulseController;
+  late Animation<double> _pulseAnimation;
+  
+  List<_ChatMessage> _messages = [];
+
+  static const String _kMessagesKey = 'chat_messages_v1';
+  static const String _kLastLocationKey = 'last_location_v1';
 
   @override
   void initState() {
     super.initState();
+    
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+      ),
+    );
+    
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat(reverse: true);
+    
+    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
+      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+    );
+    
     _initSpeech();
     _flutterTts.awaitSpeakCompletion(true);
     _initializeTts();
     _preloadTask = _preloadData();
+    _loadPersistedData();
+  }
+
+  Future<void> _loadPersistedData() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? messagesJson = prefs.getString(_kMessagesKey);
+      if (messagesJson != null && messagesJson.isNotEmpty) {
+        final List<dynamic> decoded = json.decode(messagesJson) as List<dynamic>;
+        final List<_ChatMessage> loaded = decoded.map((e) {
+          return _ChatMessage(
+            text: e['text'] as String? ?? '',
+            isUser: e['isUser'] as bool? ?? false,
+          );
+        }).toList();
+        if (mounted) {
+          setState(() {
+            _messages = loaded;
+          });
+        } else {
+          _messages = loaded;
+        }
+      } else {
+        // default welcome
+        if (_messages.isEmpty) {
+          _messages.add(_ChatMessage(
+            text: "Bonjour ! Je suis votre assistant PharmConnect. Comment puis-je vous aider aujourd'hui ?",
+            isUser: false,
+          ));
+        }
+      }
+
+      final String? locJson = prefs.getString(_kLastLocationKey);
+      if (locJson != null && locJson.isNotEmpty) {
+        final Map<String, dynamic> map = json.decode(locJson) as Map<String, dynamic>;
+        final double? lat = (map['latitude'] as num?)?.toDouble();
+        final double? lng = (map['longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null) {
+          final GeoPoint point = GeoPoint(lat, lng);
+          if (mounted) {
+            setState(() => _lastKnownUserLocation = point);
+          } else {
+            _lastKnownUserLocation = point;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Erreur chargement persisted data: $e');
+    }
+  }
+
+  Future<void> _saveMessages() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<Map<String, dynamic>> encoded = _messages
+          .map((m) => {'text': m.text, 'isUser': m.isUser})
+          .toList();
+      await prefs.setString(_kMessagesKey, json.encode(encoded));
+    } catch (e) {
+      debugPrint('Erreur sauvegarde messages: $e');
+    }
+  }
+
+  Future<void> _saveLastLocation() async {
+    try {
+      if (_lastKnownUserLocation == null) return;
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final Map<String, dynamic> map = {
+        'latitude': _lastKnownUserLocation!.latitude,
+        'longitude': _lastKnownUserLocation!.longitude,
+      };
+      await prefs.setString(_kLastLocationKey, json.encode(map));
+    } catch (e) {
+      debugPrint('Erreur sauvegarde location: $e');
+    }
   }
 
   void _initSpeech() async {
@@ -81,7 +187,15 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
   void dispose() {
     _speechToText.stop();
     _flutterTts.stop();
+    _pulseController.dispose();
     super.dispose();
+  }
+
+  Future<void> _addMessage(String text, bool isUser) async {
+    setState(() {
+      _messages.add(_ChatMessage(text: text, isUser: isUser));
+    });
+    await _saveMessages();
   }
 
   void _toggleListening() async {
@@ -111,12 +225,13 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
 
   Future<void> _startMedicationInquiry() async {
     if (!mounted) return;
+    const response = "Quel médicament recherchez-vous aujourd'hui ?";
+    _addMessage(response, false);
     setState(() {
       _stage = _ConversationStage.awaitingMedicationName;
-      _aiResponse =
-          "Bonjour ! Je suis votre assistant santé. Quel médicament souhaitez-vous aujourd'hui ?";
+      _aiResponse = response;
     });
-    await _speak(_aiResponse);
+    await _speak(response);
     await _startListening(
       onFinalResult: _handleMedicationName,
       onNoMatch: _promptMedicationRepeat,
@@ -125,10 +240,12 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
 
   Future<void> _promptMedicationRepeat() async {
     if (!mounted) return;
+    const response = "Je n'ai pas saisi le nom. Pouvez-vous répéter ?";
+    _addMessage(response, false);
     setState(() {
-      _aiResponse = "Je n'ai pas saisi le nom du médicament. Pouvez-vous répéter ?";
+      _aiResponse = response;
     });
-    await _speak(_aiResponse);
+    await _speak(response);
     await _startListening(
       onFinalResult: _handleMedicationName,
       onNoMatch: _promptMedicationRepeat,
@@ -140,13 +257,16 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
       await _promptMedicationRepeat();
       return;
     }
+    _addMessage(input, true);
     await _processMedicationRequest(input);
   }
 
   Future<void> _processMedicationRequest(String medicationQuery) async {
     if (!mounted) return;
+    final searchingMsg = "Je recherche $medicationQuery...";
+    _addMessage(searchingMsg, false);
     setState(() {
-      _aiResponse = "Je recherche $medicationQuery autour de vous...";
+      _aiResponse = searchingMsg;
     });
 
     try {
@@ -154,16 +274,18 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
       final List<MedicationCatalogEntry> catalog = await _ensureCatalogLoaded();
       final List<MedicationCatalogEntry> matches =
           _searchCatalog(medicationQuery, catalog);
+      
       if (matches.isEmpty) {
+        const noResultMsg = "Je n'ai trouvé aucune pharmacie proposant ce médicament.";
+        _addMessage(noResultMsg, false);
         if (!mounted) return;
         setState(() {
           _stage = _ConversationStage.idle;
           _currentOptions = const [];
           _selectedOption = null;
-          _aiResponse =
-              "Je n'ai trouvé aucune pharmacie proposant $medicationQuery pour le moment.";
+          _aiResponse = noResultMsg;
         });
-        await _speak(_aiResponse);
+        await _speak(noResultMsg);
         return;
       }
 
@@ -173,13 +295,14 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
       final List<_PharmacyOption> options = _buildOptions(entry, location);
 
       if (options.isEmpty) {
+        const noLocationMsg = "Aucune pharmacie avec localisation disponible.";
+        _addMessage(noLocationMsg, false);
         if (!mounted) return;
         setState(() {
           _stage = _ConversationStage.idle;
-          _aiResponse =
-              "Les pharmacies référencées n'ont pas de localisation disponible pour $medicationQuery.";
+          _aiResponse = noLocationMsg;
         });
-        await _speak(_aiResponse);
+        await _speak(noLocationMsg);
         return;
       }
 
@@ -188,12 +311,14 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
       _selectedOption = null;
       await _presentOptions(entry, location);
     } catch (e) {
+      const errorMsg = "Une erreur est survenue. Réessayez plus tard.";
+      _addMessage(errorMsg, false);
       if (!mounted) return;
       setState(() {
         _stage = _ConversationStage.idle;
-        _aiResponse = "Une erreur est survenue pendant la recherche : $e";
+        _aiResponse = errorMsg;
       });
-      await _speak("Je rencontre un problème pour effectuer la recherche. Réessayez plus tard.");
+      await _speak(errorMsg);
     }
   }
 
@@ -223,7 +348,8 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
 
   List<_PharmacyOption> _buildOptions(
       MedicationCatalogEntry entry, GeoPoint? userLocation) {
-    final List<_PharmacyOption> options = entry.availabilities.map((availability) {
+    final List<_PharmacyOption> options =
+        entry.availabilities.map((availability) {
       final GeoLocationPoint? point = availability.pharmacy.localisation;
       double? distance;
       if (userLocation != null && point != null) {
@@ -234,7 +360,8 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
           endLng: point.longitude,
         );
       }
-      return _PharmacyOption(availability: availability, distanceMeters: distance);
+      return _PharmacyOption(
+          availability: availability, distanceMeters: distance);
     }).toList();
 
     if (userLocation != null) {
@@ -254,7 +381,9 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
   Future<void> _presentOptions(
       MedicationCatalogEntry entry, GeoPoint? location) async {
     if (!mounted) return;
-    final String summary = _buildSummaryMessage(entry.nom, _currentOptions, location);
+    final String summary =
+        _buildSummaryMessage(entry.nom, _currentOptions, location);
+    _addMessage(summary, false);
     setState(() {
       _stage = _ConversationStage.awaitingPharmacyChoice;
       _aiResponse = summary;
@@ -272,46 +401,23 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
     GeoPoint? location,
   ) {
     final StringBuffer buffer = StringBuffer();
-    buffer.writeln('Voici les pharmacies proposant $medicationName :');
+    buffer.writeln('J\'ai trouvé ${options.length} pharmacies pour $medicationName :');
     for (var i = 0; i < options.length; i++) {
       final option = options[i];
       final pharmacy = option.pharmacy;
-      final statusLabel = option.medication.status.label;
-      final price = option.medication.prix;
-      final String priceLabel = price > 0 ? ' • ~${price.toStringAsFixed(0)} FCFA' : '';
       final String distanceLabel = option.distanceMeters != null
-          ? ' • à ${_formatDistance(option.distanceMeters!)}'
+          ? ' à ${_formatDistance(option.distanceMeters!)}'
           : '';
-      buffer.writeln(
-        '${i + 1}. ${pharmacy.nom} ($statusLabel$distanceLabel$priceLabel)',
-      );
+      buffer.writeln('${i + 1}. ${pharmacy.nom}$distanceLabel');
     }
-
-    final _PharmacyOption nearest = options.firstWhere(
-      (option) => option.distanceMeters != null,
-      orElse: () => options.first,
-    );
-
-    if (nearest.distanceMeters != null) {
-      buffer.writeln(
-        'La pharmacie la plus proche est ${nearest.pharmacy.nom}, située à ${_formatDistance(nearest.distanceMeters!)}.',
-      );
-    } else if (location == null) {
-      buffer.writeln(
-        'Activez la localisation pour obtenir la pharmacie la plus proche.',
-      );
-    }
-
-    buffer.writeln(
-        'Quelle pharmacie souhaitez-vous choisir ? Dites le numéro ou le nom.');
-
+    buffer.writeln('Dites le numéro de la pharmacie souhaitée.');
     return buffer.toString();
   }
 
   Future<void> _promptPharmacySelection() async {
     if (!mounted) return;
-    final String prompt =
-        'Quelle pharmacie souhaitez-vous choisir ? Dites le numéro ou le nom.';
+    const prompt = 'Quelle pharmacie choisissez-vous ?';
+    _addMessage(prompt, false);
     setState(() {
       _stage = _ConversationStage.awaitingPharmacyChoice;
       _aiResponse = prompt;
@@ -324,20 +430,25 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
   }
 
   Future<void> _handlePharmacySelection(String input) async {
+    _addMessage(input, true);
+    
     if (_currentOptions.isEmpty) {
+      const noOptions = 'Aucune pharmacie disponible.';
+      _addMessage(noOptions, false);
       if (!mounted) return;
       setState(() {
         _stage = _ConversationStage.idle;
-        _aiResponse = 'Aucune pharmacie n\'est disponible pour le moment.';
+        _aiResponse = noOptions;
       });
-      await _speak(_aiResponse);
+      await _speak(noOptions);
       return;
     }
 
     final _PharmacyOption? selected = _matchPharmacyOption(input);
     if (selected == null) {
-      await _speak(
-          "Je n'ai pas compris votre choix. Répétez le numéro ou le nom de la pharmacie.");
+      const retry = "Je n'ai pas compris. Répétez le numéro.";
+      _addMessage(retry, false);
+      await _speak(retry);
       await _startListening(onFinalResult: _handlePharmacySelection);
       return;
     }
@@ -345,8 +456,9 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
     if (!mounted) return;
     _selectedOption = selected;
     _stage = _ConversationStage.awaitingNavigationConfirmation;
-    final String prompt =
-        "Vous avez choisi ${selected.pharmacy.nom}. Souhaitez-vous lancer l'itinéraire ? (oui ou non)";
+    final prompt =
+        "Vous avez choisi ${selected.pharmacy.nom}. Voulez-vous l'itinéraire ?";
+    _addMessage(prompt, false);
     setState(() {
       _aiResponse = prompt;
     });
@@ -359,16 +471,11 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
     final String normalizedInput = _normalizeText(input);
 
     final Map<String, int> numberWords = {
-      'un': 1,
-      'une': 1,
-      'premier': 1,
-      'deux': 2,
-      'trois': 3,
-      'troisieme': 3,
-      'quatre': 4,
-      'quatrieme': 4,
-      'cinq': 5,
-      'cinquieme': 5,
+      'un': 1, 'une': 1, 'premier': 1,
+      'deux': 2, 'deuxieme': 2,
+      'trois': 3, 'troisieme': 3,
+      'quatre': 4, 'quatrieme': 4,
+      'cinq': 5, 'cinquieme': 5,
     };
 
     for (final entry in numberWords.entries) {
@@ -402,16 +509,19 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
 
   Future<void> _promptNavigationConfirmation() async {
     if (_selectedOption == null || !mounted) {
+      const noSelection = "Aucune pharmacie sélectionnée.";
+      _addMessage(noSelection, false);
       setState(() {
         _stage = _ConversationStage.idle;
-        _aiResponse = "Aucune pharmacie sélectionnée.";
+        _aiResponse = noSelection;
       });
-      await _speak(_aiResponse);
+      await _speak(noSelection);
       return;
     }
 
-    final String prompt =
-        "Voulez-vous que je lance l'itinéraire vers ${_selectedOption!.pharmacy.nom} ? Dites oui ou non.";
+    final prompt =
+        "Lancer l'itinéraire vers ${_selectedOption!.pharmacy.nom} ?";
+    _addMessage(prompt, false);
     setState(() {
       _stage = _ConversationStage.awaitingNavigationConfirmation;
       _aiResponse = prompt;
@@ -424,14 +534,18 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
   }
 
   Future<void> _handleNavigationResponse(String input) async {
+    _addMessage(input, true);
+    
     if (!mounted) return;
     final _PharmacyOption? option = _selectedOption;
     if (option == null) {
+      const noPharmacy = "Pas de pharmacie sélectionnée.";
+      _addMessage(noPharmacy, false);
       setState(() {
         _stage = _ConversationStage.idle;
-        _aiResponse = "Je n'ai pas de pharmacie sélectionnée.";
+        _aiResponse = noPharmacy;
       });
-      await _speak(_aiResponse);
+      await _speak(noPharmacy);
       return;
     }
 
@@ -442,20 +556,23 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
         normalizedInput.contains('non') || normalizedInput.contains('no');
 
     if (!isPositive && !isNegative) {
-      await _speak("Répondez par oui ou non, s'il vous plaît.");
+      const clarify = "Répondez par oui ou non.";
+      _addMessage(clarify, false);
+      await _speak(clarify);
       await _startListening(onFinalResult: _handleNavigationResponse);
       return;
     }
 
     if (isNegative) {
+      const cancelled = "D'accord, l'itinéraire n'est pas lancé.";
+      _addMessage(cancelled, false);
       setState(() {
         _stage = _ConversationStage.idle;
-        _aiResponse =
-            "Très bien, l'itinéraire ne sera pas lancé. N'hésitez pas à me demander autre chose.";
+        _aiResponse = cancelled;
         _currentOptions = const [];
         _selectedOption = null;
       });
-      await _speak(_aiResponse);
+      await _speak(cancelled);
       return;
     }
 
@@ -463,14 +580,15 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
     final GeoLocationPoint? point = pharmacy.localisation;
 
     if (point == null) {
+      const noLoc = "Localisation non disponible pour cette pharmacie.";
+      _addMessage(noLoc, false);
       setState(() {
         _stage = _ConversationStage.idle;
-        _aiResponse =
-            "La localisation de ${pharmacy.nom} n'est pas disponible. Impossible de lancer l'itinéraire.";
+        _aiResponse = noLoc;
         _currentOptions = const [];
         _selectedOption = null;
       });
-      await _speak(_aiResponse);
+      await _speak(noLoc);
       return;
     }
 
@@ -478,26 +596,19 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
       'https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}&travelmode=driving',
     );
 
-    final bool launched = await launchUrl(url, mode: LaunchMode.externalApplication);
-    if (launched) {
-      setState(() {
-        _stage = _ConversationStage.idle;
-        _aiResponse =
-            "J'ai ouvert l'itinéraire vers ${pharmacy.nom} dans votre application de cartes.";
-        _currentOptions = const [];
-        _selectedOption = null;
-      });
-      await _speak(_aiResponse);
-    } else {
-      setState(() {
-        _stage = _ConversationStage.idle;
-        _aiResponse =
-            "Je n'ai pas pu ouvrir l'itinéraire. Vérifiez votre connexion et réessayez.";
-        _currentOptions = const [];
-        _selectedOption = null;
-      });
-      await _speak(_aiResponse);
-    }
+    final bool launched =
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+    final successMsg = launched
+        ? "J'ai ouvert l'itinéraire vers ${pharmacy.nom}."
+        : "Impossible d'ouvrir l'itinéraire.";
+    _addMessage(successMsg, false);
+    setState(() {
+      _stage = _ConversationStage.idle;
+      _aiResponse = successMsg;
+      _currentOptions = const [];
+      _selectedOption = null;
+    });
+    await _speak(successMsg);
   }
 
   Future<void> _startListening({
@@ -506,16 +617,19 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
   }) async {
     final bool available = _speechToText.isAvailable ||
         await _speechToText.initialize(
-          onError: (error) => debugPrint("Erreur reconnaissance : ${error.errorMsg}"),
+          onError: (error) =>
+              debugPrint("Erreur reconnaissance : ${error.errorMsg}"),
         );
 
     if (!available) {
+      const notAvailable = "Micro non disponible.";
+      _addMessage(notAvailable, false);
       if (!mounted) return;
       setState(() {
         _stage = _ConversationStage.idle;
-        _aiResponse = "Micro non autorisé ou non disponible.";
+        _aiResponse = notAvailable;
       });
-      await _speak(_aiResponse);
+      await _speak(notAvailable);
       return;
     }
 
@@ -564,6 +678,7 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
     }
 
     if (!mounted || finalCallback == null) return;
+    _addMessage(message, false);
     setState(() {
       _aiResponse = message;
     });
@@ -598,7 +713,7 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
     if (error.errorMsg == 'error_no_match' && finalCallback != null) {
       Future.microtask(() async {
         await _handleRepeatRequest(
-          message: "Je n'ai pas compris. Pouvez-vous répéter ?",
+          message: "Je n'ai pas compris. Répétez.",
           finalCallback: finalCallback,
           retryCallback: retryCallback,
         );
@@ -607,30 +722,6 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
     }
 
     _clearPendingCallbacks();
-
-    final String message;
-    switch (error.errorMsg) {
-      case 'error_network':
-      case 'error_network_timeout':
-        message =
-            "Je ne parviens pas à me connecter au service de reconnaissance. Vérifiez votre connexion puis appuyez à nouveau sur le micro.";
-        break;
-      case 'error_busy':
-      case 'error_audio':
-      case 'error_server':
-      case 'error_client':
-        message =
-            "Le micro est momentanément indisponible. Patientez quelques secondes puis relancez le micro.";
-        break;
-      default:
-        message =
-            "Je rencontre un problème avec la reconnaissance vocale. Appuyez à nouveau sur le micro pour réessayer.";
-        break;
-    }
-
-    Future.microtask(() async {
-      await _handleFatalListeningError(message);
-    });
   }
 
   Future<void> _speak(String text) async {
@@ -660,22 +751,9 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
   String _normalizeText(String value) {
     final String lower = value.toLowerCase();
     const Map<String, String> replacements = {
-      'à': 'a',
-      'â': 'a',
-      'ä': 'a',
-      'ç': 'c',
-      'é': 'e',
-      'è': 'e',
-      'ê': 'e',
-      'ë': 'e',
-      'î': 'i',
-      'ï': 'i',
-      'ô': 'o',
-      'ö': 'o',
-      'ù': 'u',
-      'û': 'u',
-      'ü': 'u',
-      'ÿ': 'y',
+      'à': 'a', 'â': 'a', 'ä': 'a', 'ç': 'c', 'é': 'e', 'è': 'e',
+      'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o',
+      'ù': 'u', 'û': 'u', 'ü': 'u', 'ÿ': 'y',
     };
     return lower
         .split('')
@@ -718,12 +796,15 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
             .tryGetCurrentPosition()
             .timeout(const Duration(seconds: 5));
       } catch (e) {
-        debugPrint('Localisation indisponible durant le préchargement: $e');
+        debugPrint('Localisation indisponible: $e');
       }
 
       if (!mounted) {
         _catalogCache = catalog;
         _lastKnownUserLocation = location;
+        if (location != null) {
+          await _saveLastLocation();
+        }
         return;
       }
 
@@ -733,8 +814,11 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
           _lastKnownUserLocation = location;
         }
       });
+      if (location != null) {
+        await _saveLastLocation();
+      }
     } catch (e) {
-      debugPrint('Erreur préchargement catalogue: $e');
+      debugPrint('Erreur préchargement: $e');
     } finally {
       _isPreloading = false;
     }
@@ -764,206 +848,325 @@ class _ChatAIScreenState extends State<ChatAIScreen> {
       }
       return location;
     } catch (e) {
-      debugPrint('Erreur récupération localisation: $e');
+      debugPrint('Erreur localisation: $e');
       return null;
     }
-  }
-
-  Future<void> _handleFatalListeningError(String message) async {
-    if (!mounted) return;
-    setState(() {
-      _stage = _ConversationStage.idle;
-      _aiResponse = message;
-      _isListening = false;
-    });
-    await _speak(message);
-  }
-
-  Widget _buildResponseCard() {
-    final List<String> lines = _aiResponse
-        .split('\n')
-        .map((line) => line.trim())
-        .where((line) => line.isNotEmpty)
-        .toList();
-    final bool multipleLines = lines.length > 1;
-    final List<Color> gradientColors = _isListening
-        ? [const Color(0xFF66BB6A), const Color(0xFF2E7D32)]
-        : [Colors.white, const Color(0xFFF8FBF6)];
-    final Color primaryTextColor =
-        _isListening ? Colors.white : const Color(0xFF1F4137);
-    final Color secondaryTextColor =
-        _isListening ? Colors.white70 : const Color(0xFF5E7A72);
-    final Color accentColor =
-        _isListening ? Colors.white : const Color(0xFF2E7D32);
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 350),
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: gradientColors,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(28),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 24,
-            offset: const Offset(0, 18),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: _isListening
-                      ? Colors.white.withOpacity(0.25)
-                      : const Color(0xFFE8F5E9),
-                ),
-                child: Icon(
-                  Icons.auto_awesome_rounded,
-                  size: 28,
-                  color: accentColor,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Assistant Pharma IA',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                      color: primaryTextColor,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _isListening
-                        ? 'Je vous écoute...'
-                        : 'Prêt à vous accompagner',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: secondaryTextColor,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          ...lines.map(
-            (line) => Padding(
-              padding:
-                  EdgeInsets.only(bottom: line == lines.last ? 0 : 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (multipleLines)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Icon(
-                        Icons.fiber_manual_record,
-                        size: 8,
-                        color: accentColor,
-                      ),
-                    ),
-                  if (multipleLines) const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      line,
-                      style: TextStyle(
-                        fontSize: 16,
-                        height: 1.4,
-                        color: primaryTextColor,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMicControl() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        ElevatedButton(
-          onPressed: _toggleListening,
-          style: ElevatedButton.styleFrom(
-            backgroundColor:
-                _isListening ? const Color(0xFFE53935) : const Color(0xFF2E7D32),
-            shape: const CircleBorder(),
-            padding: const EdgeInsets.all(28),
-            elevation: 12,
-            shadowColor: Colors.black26,
-          ),
-          child: Icon(
-            _isListening ? Icons.stop_rounded : Icons.mic_rounded,
-            size: 40,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 16),
-        Text(
-          _isListening
-              ? 'Parlez, je suis à votre écoute.'
-              : 'Appuyez pour me demander un médicament.',
-          style: const TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF2E7D32),
-          ),
-          textAlign: TextAlign.center,
-        ),
-      ],
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F4F1),
-      appBar: AppBar(
-        title: const Text("Assistant Pharma IA"),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1F4137),
-        elevation: 0,
-        centerTitle: true,
-      ),
-      body: Padding(
-        padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+      backgroundColor: AppColors.background,
+      body: SafeArea(
         child: Column(
           children: [
+            // Header
+            _buildHeader(),
+            
+            // Chat messages
             Expanded(
-              child: Center(
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 600),
-                    child: _buildResponseCard(),
-                  ),
-                ),
-              ),
+              child: _buildChatArea(),
             ),
-            const SizedBox(height: 32),
+            
+            // Mic control
             _buildMicControl(),
           ],
         ),
       ),
     );
   }
+
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.sm, AppSpacing.md, AppSpacing.xl, AppSpacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.slate900.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.slate100,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                Icons.arrow_back_ios_new_rounded,
+                size: 16,
+                color: AppColors.slate600,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              gradient: AppColors.heroGradient,
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Assistant PharmConnect",
+                  style: AppTypography.labelLarge.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: AppColors.success,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      "En ligne",
+                      style: AppTypography.caption.copyWith(
+                        color: AppColors.success,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChatArea() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
+        itemCount: _messages.length,
+        itemBuilder: (context, index) {
+          final message = _messages[index];
+          return _buildMessageBubble(message);
+        },
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(_ChatMessage message) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment:
+            message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (!message.isUser) ...[
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: Colors.white,
+                size: 16,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 12,
+              ),
+              decoration: BoxDecoration(
+                gradient: message.isUser
+                    ? AppColors.primaryGradient
+                    : null,
+                color: message.isUser ? null : Colors.white,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(18),
+                  topRight: const Radius.circular(18),
+                  bottomLeft: Radius.circular(message.isUser ? 18 : 4),
+                  bottomRight: Radius.circular(message.isUser ? 4 : 18),
+                ),
+                boxShadow: AppShadows.soft,
+              ),
+              child: Text(
+                message.text,
+                style: AppTypography.bodyMedium.copyWith(
+                  color: message.isUser ? Colors.white : AppColors.slate700,
+                  height: 1.4,
+                ),
+              ),
+            ),
+          ),
+          if (message.isUser) ...[
+            const SizedBox(width: 8),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: AppColors.slate200,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.person_rounded,
+                color: AppColors.slate500,
+                size: 18,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMicControl() {
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.xl,
+        AppSpacing.lg,
+        AppSpacing.xl,
+        MediaQuery.of(context).padding.bottom + AppSpacing.lg,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.slate900.withOpacity(0.06),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Listening indicator
+          AnimatedOpacity(
+            opacity: _isListening ? 1 : 0,
+            duration: const Duration(milliseconds: 200),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.primary.withOpacity(0.2),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    "Je vous écoute...",
+                    style: AppTypography.labelMedium.copyWith(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          // Mic button
+          AnimatedBuilder(
+            animation: _pulseAnimation,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: _isListening ? _pulseAnimation.value : 1.0,
+                child: GestureDetector(
+                  onTap: _toggleListening,
+                  child: Container(
+                    width: 72,
+                    height: 72,
+                    decoration: BoxDecoration(
+                      gradient: _isListening
+                          ? const LinearGradient(
+                              colors: [AppColors.error, Color(0xFFFF6B6B)],
+                            )
+                          : AppColors.heroGradient,
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: (_isListening
+                                  ? AppColors.error
+                                  : AppColors.primary)
+                              .withOpacity(0.4),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _isListening
+                          ? Icons.stop_rounded
+                          : Icons.mic_rounded,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          
+          const SizedBox(height: 12),
+          
+          Text(
+            _isListening
+                ? "Parlez maintenant..."
+                : "Appuyez pour parler",
+            style: AppTypography.bodySmall.copyWith(
+              color: AppColors.slate500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ChatMessage {
+  final String text;
+  final bool isUser;
+
+  _ChatMessage({required this.text, required this.isUser});
 }

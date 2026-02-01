@@ -1024,7 +1024,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             onPressed: () {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                MaterialPageRoute(builder: (context) => const SettingsScreen(userName: '',)),
               );
             },
           ),

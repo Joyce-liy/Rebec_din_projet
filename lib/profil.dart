@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart'; // Ajouté
-import 'package:firebase_auth/firebase_auth.dart'; // Ajouté
-import 'package:google_sign_in/google_sign_in.dart'; // Ajouté
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pharma/edit.dart';
 import 'package:pharma/pageconnection/login_screen.dart';
 import 'package:pharma/theme/app_theme.dart';
+import 'package:pharma/user_data_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   final String userName;
@@ -20,11 +22,13 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen>
     with SingleTickerProviderStateMixin {
   late String localUserName;
+  File? _profileImage;
   String? selectedQuartier;
   bool isFrench = true;
   bool notificationsEnabled = true;
   bool darkModeEnabled = false;
   List<String> quartiers = [];
+  bool _isLoading = true;
   
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -34,6 +38,7 @@ class _SettingsScreenState extends State<SettingsScreen>
     super.initState();
     localUserName = widget.userName;
     loadQuartiers();
+    _loadUserData();
     
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
@@ -58,6 +63,46 @@ class _SettingsScreenState extends State<SettingsScreen>
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+  // Charger les données de l'utilisateur connecté
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      final userDataService = UserDataService.instance;
+      
+      print('🔄 Chargement des données utilisateur...');
+      
+      // Charger le nom
+      final savedName = await userDataService.getUserName();
+      if (savedName != null && savedName.isNotEmpty) {
+        setState(() => localUserName = savedName);
+        print(' Nom chargé: $savedName');
+      }
+      
+      // Charger l'image de profil
+      final imagePath = await userDataService.getProfilePicture();
+      if (imagePath != null && imagePath.isNotEmpty) {
+        final file = File(imagePath);
+        if (await file.exists()) {
+          setState(() => _profileImage = File(imagePath));
+          print('Image chargée: $imagePath');
+        } else {
+          setState(() => _profileImage = null);
+          print(' Fichier image introuvable');
+        }
+      } else {
+        setState(() => _profileImage = null);
+        print(' Aucune image de profil');
+      }
+    } catch (e) {
+      debugPrint(" Erreur lors du chargement des données: $e");
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Future<void> loadQuartiers() async {
@@ -96,8 +141,9 @@ class _SettingsScreenState extends State<SettingsScreen>
       ),
     );
 
-    if (newName != null && newName.isNotEmpty) {
-      setState(() => localUserName = newName);
+    // Recharger les données après modification du profil
+    if (newName != null || mounted) {
+      await _loadUserData();
     }
   }
 
@@ -132,7 +178,7 @@ class _SettingsScreenState extends State<SettingsScreen>
             ),
             const SizedBox(height: 8),
             Text(
-              "Vous devrez vous reconnecter pour accéder à votre compte.",
+              "Vos données seront conservées pour votre prochaine connexion.",
               style: AppTypography.bodyMedium.copyWith(
                 color: AppColors.slate500,
               ),
@@ -176,16 +222,19 @@ class _SettingsScreenState extends State<SettingsScreen>
                           Navigator.pop(context);
                           
                           try {
-                            // 2. Déconnexion Firebase
+                            print('🔓 Déconnexion en cours...');
+                            
+                            // 2. Effacer uniquement les données de session (PAS les données utilisateur)
+                            await UserDataService.instance.clearSessionData();
+                            
+                            // 3. Déconnexion Firebase
                             await FirebaseAuth.instance.signOut();
                             
-                            // 3. Déconnexion Google
+                            // 4. Déconnexion Google
                             final GoogleSignIn googleSignIn = GoogleSignIn();
                             await googleSignIn.signOut();
                             
-                            // 4. Nettoyage Local (SharedPreferences)
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.clear();
+                            print('✅ Déconnexion réussie - Données utilisateur conservées');
 
                             // 5. Redirection vers Login
                             if (context.mounted) {
@@ -197,7 +246,15 @@ class _SettingsScreenState extends State<SettingsScreen>
                               );
                             }
                           } catch (e) {
-                            debugPrint("Erreur lors de la déconnexion: $e");
+                            debugPrint("❌ Erreur lors de la déconnexion: $e");
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text("Erreur de déconnexion: $e"),
+                                  backgroundColor: AppColors.error,
+                                ),
+                              );
+                            }
                           }
                         },
                         borderRadius: BorderRadius.circular(14),
@@ -234,77 +291,89 @@ class _SettingsScreenState extends State<SettingsScreen>
       body: SafeArea(
         child: FadeTransition(
           opacity: _fadeAnimation,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(),
-            slivers: [
-              SliverToBoxAdapter(child: _buildHeader()),
-              SliverToBoxAdapter(child: _buildProfileCard(initial)),
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.xl,
-                ),
-                sliver: SliverList(
-                  delegate: SliverChildListDelegate([
-                    const SizedBox(height: 24),
-                    _buildSectionLabel("PRÉFÉRENCES"),
-                    const SizedBox(height: 12),
-                    _buildSettingsCard([
-                      _buildLocationRow(),
-                      _buildDivider(),
-                      _buildSwitchRow(
-                        icon: Icons.language_rounded,
-                        title: "Langue française",
-                        subtitle: "Interface en français",
-                        value: isFrench,
-                        iconColor: AppColors.info,
-                        onChanged: (val) => setState(() => isFrench = val),
-                      ),
-                      _buildDivider(),
-                      _buildSwitchRow(
-                        icon: Icons.notifications_rounded,
-                        title: "Notifications",
-                        subtitle: "Alertes de disponibilité",
-                        value: notificationsEnabled,
-                        iconColor: AppColors.warning,
-                        onChanged: (val) =>
-                            setState(() => notificationsEnabled = val),
-                      ),
-                    ]),
-                    const SizedBox(height: 24),
-                    _buildSectionLabel("ASSISTANCE"),
-                    const SizedBox(height: 12),
-                    _buildSettingsCard([
-                      _buildNavigationRow(
-                        icon: Icons.emergency_rounded,
-                        title: "Numéros d'urgence",
-                        subtitle: "SAMU, Pompiers, Police",
-                        iconColor: AppColors.error,
-                        onTap: () {},
-                      ),
-                      _buildDivider(),
-                      _buildNavigationRow(
-                        icon: Icons.help_outline_rounded,
-                        title: "Centre d'aide",
-                        subtitle: "FAQ et support",
-                        iconColor: AppColors.secondary,
-                        onTap: () {},
-                      ),
-                      _buildDivider(),
-                      _buildNavigationRow(
-                        icon: Icons.info_outline_rounded,
-                        title: "À propos",
-                        subtitle: "Version 1.0.0",
-                        iconColor: AppColors.primary,
-                        onTap: () {},
-                      ),
-                    ]),
-                    const SizedBox(height: 32),
-                    _buildLogoutButton(),
-                    const SizedBox(height: 40),
-                  ]),
-                ),
+          child: RefreshIndicator(
+            onRefresh: _loadUserData,
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
               ),
-            ],
+              slivers: [
+                SliverToBoxAdapter(child: _buildHeader()),
+                SliverToBoxAdapter(
+                  child: _isLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(40),
+                          child: Center(child: CircularProgressIndicator()),
+                        )
+                      : _buildProfileCard(initial),
+                ),
+                SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.xl,
+                  ),
+                  sliver: SliverList(
+                    delegate: SliverChildListDelegate([
+                      const SizedBox(height: 24),
+                      _buildSectionLabel("PRÉFÉRENCES"),
+                      const SizedBox(height: 12),
+                      _buildSettingsCard([
+                        _buildLocationRow(),
+                        _buildDivider(),
+                        _buildSwitchRow(
+                          icon: Icons.language_rounded,
+                          title: "Langue française",
+                          subtitle: "Interface en français",
+                          value: isFrench,
+                          iconColor: AppColors.info,
+                          onChanged: (val) => setState(() => isFrench = val),
+                        ),
+                        _buildDivider(),
+                        _buildSwitchRow(
+                          icon: Icons.notifications_rounded,
+                          title: "Notifications",
+                          subtitle: "Alertes de disponibilité",
+                          value: notificationsEnabled,
+                          iconColor: AppColors.warning,
+                          onChanged: (val) =>
+                              setState(() => notificationsEnabled = val),
+                        ),
+                      ]),
+                      const SizedBox(height: 24),
+                      _buildSectionLabel("ASSISTANCE"),
+                      const SizedBox(height: 12),
+                      _buildSettingsCard([
+                        _buildNavigationRow(
+                          icon: Icons.emergency_rounded,
+                          title: "Numéros d'urgence",
+                          subtitle: "SAMU, Pompiers, Police",
+                          iconColor: AppColors.error,
+                          onTap: () {},
+                        ),
+                        _buildDivider(),
+                        _buildNavigationRow(
+                          icon: Icons.help_outline_rounded,
+                          title: "Centre d'aide",
+                          subtitle: "FAQ et support",
+                          iconColor: AppColors.secondary,
+                          onTap: () {},
+                        ),
+                        _buildDivider(),
+                        _buildNavigationRow(
+                          icon: Icons.info_outline_rounded,
+                          title: "À propos",
+                          subtitle: "Version 1.0.0",
+                          iconColor: AppColors.primary,
+                          onTap: () {},
+                        ),
+                      ]),
+                      const SizedBox(height: 32),
+                      _buildLogoutButton(),
+                      const SizedBox(height: 40),
+                    ]),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -368,25 +437,37 @@ class _SettingsScreenState extends State<SettingsScreen>
         ),
         child: Row(
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.3),
-                  width: 2,
-                ),
-              ),
-              child: Center(
-                child: Text(
-                  initial,
-                  style: AppTypography.displaySmall.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
+            // Avatar avec image ou initiale
+            Hero(
+              tag: 'profile_avatar',
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 2,
                   ),
+                  image: _profileImage != null
+                      ? DecorationImage(
+                          image: FileImage(_profileImage!),
+                          fit: BoxFit.cover,
+                        )
+                      : null,
                 ),
+                child: _profileImage == null
+                    ? Center(
+                        child: Text(
+                          initial,
+                          style: AppTypography.displaySmall.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
             ),
             const SizedBox(width: 16),

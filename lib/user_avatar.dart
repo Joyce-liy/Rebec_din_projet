@@ -1,45 +1,55 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:pharma/user_data_service.dart';
 
-class GlobalUserAvatar extends StatefulWidget {
+class GlobalUserAvatar extends StatelessWidget {
   final double radius;
   final String userName;
 
-  const GlobalUserAvatar({super.key, required this.radius, required this.userName});
-
-  @override
-  State<GlobalUserAvatar> createState() => _GlobalUserAvatarState();
-}
-
-class _GlobalUserAvatarState extends State<GlobalUserAvatar> {
-  String? _imagePath;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadProfilePic();
-  }
-
-  // Cette fonction charge l'image depuis la mémoire du téléphone
-  Future<void> _loadProfilePic() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _imagePath = prefs.getString('user_profile_pic');
-    });
-  }
+  const GlobalUserAvatar({
+    super.key, 
+    required this.radius, 
+    required this.userName,
+  });
 
   @override
   Widget build(BuildContext context) {
-    String initial = widget.userName.isNotEmpty ? widget.userName[0].toUpperCase() : "?";
+    // Le ValueListenableBuilder écoute le "notifier" dans votre service.
+    // Dès que saveProfilePicture est appelé, ce builder se reconstruit partout.
+    return ValueListenableBuilder<String?>(
+      valueListenable: UserDataService.instance.profilePicNotifier,
+      builder: (context, imagePath, child) {
+        
+        // Vérification si le chemin existe et si le fichier est physiquement présent
+        bool hasImage = imagePath != null && 
+                         imagePath.isNotEmpty && 
+                         File(imagePath).existsSync();
 
-    return CircleAvatar(
-      radius: widget.radius,
-      backgroundColor: Colors.green.shade600,
-      backgroundImage: _imagePath != null ? FileImage(File(_imagePath!)) : null,
-      child: _imagePath == null 
-          ? Text(initial, style: TextStyle(color: Colors.white, fontSize: widget.radius * 0.8)) 
-          : null,
+        if (hasImage) {
+          return CircleAvatar(
+            radius: radius,
+            key: ValueKey(imagePath), // Force le rafraîchissement visuel
+            backgroundImage: FileImage(File(imagePath!)),
+            backgroundColor: Colors.grey.shade200,
+          );
+        } else {
+          // Affichage par défaut avec l'initiale
+          String initial = userName.isNotEmpty ? userName[0].toUpperCase() : "U";
+          
+          return CircleAvatar(
+            radius: radius,
+            backgroundColor: Colors.green.shade600,
+            child: Text(
+              initial,
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: radius * 0.8,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
+        }
+      },
     );
   }
 }

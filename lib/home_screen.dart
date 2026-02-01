@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:pharma/search_screen.dart';
 import 'package:pharma/user_avatar.dart';
+import 'package:pharma/user_data_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pharma/pageconnection/login_screen.dart'; 
@@ -11,8 +12,7 @@ import 'package:pharma/services/history_service.dart';
 import 'package:pharma/scanner_page.dart'; 
 import 'package:pharma/chat_ai_screen.dart'; 
 import 'package:pharma/nearby_pharmacies_screen.dart';
-// Assurez-vous d'importer votre fichier de thème ici
- import 'package:pharma/theme/app_theme.dart'; 
+import 'package:pharma/theme/app_theme.dart'; 
 
 class HomeScreen extends StatefulWidget {
   final String userName;
@@ -24,10 +24,23 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
-
   double _buttonX = 20.0;
   double _buttonY = 100.0;
   bool _isFirstLoad = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeUserData();
+  }
+
+  Future<void> _initializeUserData() async {
+    final userDataService = UserDataService.instance;
+    final isFirstLogin = await userDataService.isFirstLogin();
+    if (isFirstLogin) {
+      await userDataService.initializeNewUser(widget.userName);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -185,7 +198,16 @@ class _HomeBodyState extends State<HomeBody> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text("Bonjour,", style: AppTypography.bodyLarge.copyWith(color: AppColors.slate500)),
-                      Text(widget.userName, style: AppTypography.displaySmall),
+                      // Utilisation d'un FutureBuilder pour charger le nom actuel
+                      FutureBuilder<String?>(
+                        future: UserDataService.instance.getUserName(),
+                        builder: (context, snapshot) {
+                          return Text(
+                            snapshot.data ?? widget.userName, 
+                            style: AppTypography.displaySmall,
+                          );
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -203,11 +225,9 @@ class _HomeBodyState extends State<HomeBody> {
             ),
             const SizedBox(height: AppSpacing.xxl),
             
-            // Search Prompt Card
             _buildSearchPrompt(),
             const SizedBox(height: AppSpacing.xxl),
             
-            // Filters
             const SectionHeader(title: "Filtrer par"),
             const SizedBox(height: AppSpacing.md),
             SingleChildScrollView(
@@ -224,18 +244,29 @@ class _HomeBodyState extends State<HomeBody> {
             ),
             const SizedBox(height: AppSpacing.xxxl),
             
-            // History Section
             SectionHeader(
               title: _selectedFilter == "All" ? "Historique" : "Résultats $_selectedFilter",
               actionText: "Effacer",
-              onActionTap: () => HistoryService.instance.clear(),
+              onActionTap: () async {
+                await UserDataService.instance.clearHistory();
+                HistoryService.instance.clear();
+                setState(() {}); // Rafraîchir l'UI
+              },
             ),
             const SizedBox(height: AppSpacing.md),
             
-            ValueListenableBuilder<List<String>>(
-              valueListenable: HistoryService.instance.history,
-              builder: (context, historyList, child) {
-                final filtered = historyList.where((item) => _selectedFilter == "All" || item.startsWith(_selectedFilter)).toList();
+            FutureBuilder<List<String>>(
+              future: UserDataService.instance.getHistory(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                
+                final historyList = snapshot.data!;
+                final filtered = historyList.where((item) => 
+                  _selectedFilter == "All" || item.startsWith(_selectedFilter)
+                ).toList();
+                
                 if (filtered.isEmpty) {
                   return Center(
                     child: Padding(
@@ -244,6 +275,7 @@ class _HomeBodyState extends State<HomeBody> {
                     ),
                   );
                 }
+                
                 return ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
@@ -267,7 +299,6 @@ class _HomeBodyState extends State<HomeBody> {
   Widget _buildSearchPrompt() {
     return Column(
       children: [
-        // Main Search Card (Emerald Gradient)
         Container(
           padding: const EdgeInsets.all(AppSpacing.lg),
           decoration: AppDecorations.gradientPrimary,
@@ -290,7 +321,6 @@ class _HomeBodyState extends State<HomeBody> {
         ),
         const SizedBox(height: AppSpacing.md),
         
-        // Nearby Pharmacies Card (Orange/Warning Style)
         GestureDetector(
           onTap: () {
             Navigator.push(context, MaterialPageRoute(builder: (context) => const NearbyPharmaciesScreen()));
@@ -386,9 +416,14 @@ class _HomeBodyState extends State<HomeBody> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("Déconnexion"),
-        content: const Text("Voulez-vous vraiment quitter l'application ?"),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Options de compte"),
+       
+       
+    // content: const Text("Que souhaitez-vous faire ?"),
         actions: [
+          // AJOUT : Bouton pour aller au profil sans quitter le dialogue
+         
           TextButton(
             onPressed: () => Navigator.pop(context), 
             child: Text("Annuler", style: TextStyle(color: AppColors.slate500))
@@ -396,10 +431,9 @@ class _HomeBodyState extends State<HomeBody> {
           TextButton(
             onPressed: () async {
               try {
+                await UserDataService.instance.clearSessionData();
                 await FirebaseAuth.instance.signOut();
                 await GoogleSignIn().signOut();
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.clear();
 
                 if (!context.mounted) return;
                 Navigator.pushAndRemoveUntil(
@@ -411,7 +445,7 @@ class _HomeBodyState extends State<HomeBody> {
                 print("Erreur de déconnexion: $e");
               }
             },
-            child: const Text("Oui, quitter", style: TextStyle(color: AppColors.error)),
+            child: const Text("Se déconnecter", style: TextStyle(color: AppColors.error)),
           ),
         ],
       ),
