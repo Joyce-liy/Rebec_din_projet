@@ -1,8 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:pharma/search_screen.dart';
-import 'package:pharma/user_avatar.dart';
-import 'package:pharma/user_data_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pharma/pageconnection/login_screen.dart'; 
@@ -29,20 +27,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isFirstLoad = true;
 
   @override
-  void initState() {
-    super.initState();
-    _initializeUserData();
-  }
-
-  Future<void> _initializeUserData() async {
-    final userDataService = UserDataService.instance;
-    final isFirstLogin = await userDataService.isFirstLogin();
-    if (isFirstLogin) {
-      await userDataService.initializeNewUser(widget.userName);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     if (_isFirstLoad) {
       _buttonX = MediaQuery.of(context).size.width - 80;
@@ -66,7 +50,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: _pages,
           ),
 
-          // --- BOUTON IA MOVABLE ---
+          // Bouton IA déplaçable
           if (_currentIndex == 0 || _currentIndex == 1)
             Positioned(
               left: _buttonX,
@@ -182,7 +166,21 @@ class _HomeBodyState extends State<HomeBody> {
   String _selectedFilter = "All";
 
   @override
+  void initState() {
+    super.initState();
+    // ✅ Charger l'historique au démarrage
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    await HistoryService.instance.load();
+    if (mounted) setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
+    String initial = widget.userName.isNotEmpty ? widget.userName[0].toUpperCase() : "J";
+
     return SafeArea(
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
@@ -198,26 +196,22 @@ class _HomeBodyState extends State<HomeBody> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text("Bonjour,", style: AppTypography.bodyLarge.copyWith(color: AppColors.slate500)),
-                      // Utilisation d'un FutureBuilder pour charger le nom actuel
-                      FutureBuilder<String?>(
-                        future: UserDataService.instance.getUserName(),
-                        builder: (context, snapshot) {
-                          return Text(
-                            snapshot.data ?? widget.userName, 
-                            style: AppTypography.displaySmall,
-                          );
-                        },
-                      ),
+                      Text(widget.userName, style: AppTypography.displaySmall),
                     ],
                   ),
                 ),
                 GestureDetector(
                   onTap: () => _showLogoutDialog(context),
-                  child: Container(
-                    decoration: AppDecorations.circleAvatar,
-                    child: GlobalUserAvatar(
-                      radius: 26, 
-                      userName: widget.userName,
+                  child: CircleAvatar(
+                    backgroundColor: AppColors.primary,
+                    radius: 26,
+                    child: Text(
+                      initial,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
                     ),
                   ),
                 ),
@@ -248,21 +242,18 @@ class _HomeBodyState extends State<HomeBody> {
               title: _selectedFilter == "All" ? "Historique" : "Résultats $_selectedFilter",
               actionText: "Effacer",
               onActionTap: () async {
-                await UserDataService.instance.clearHistory();
-                HistoryService.instance.clear();
+                await HistoryService.instance.clear();
                 setState(() {}); // Rafraîchir l'UI
               },
             ),
             const SizedBox(height: AppSpacing.md),
             
-            FutureBuilder<List<String>>(
-              future: UserDataService.instance.getHistory(),
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            // ✅ UTILISER ValueListenableBuilder
+            ValueListenableBuilder<List<String>>(
+              valueListenable: HistoryService.instance.history,
+              builder: (context, historyList, _) {
+                print("📊 Historique actuel : ${historyList.length} éléments"); // Debug
                 
-                final historyList = snapshot.data!;
                 final filtered = historyList.where((item) => 
                   _selectedFilter == "All" || item.startsWith(_selectedFilter)
                 ).toList();
@@ -271,7 +262,16 @@ class _HomeBodyState extends State<HomeBody> {
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.only(top: 40.0),
-                      child: Text("Historique vide", style: AppTypography.bodyMedium),
+                      child: Column(
+                        children: [
+                          Icon(Icons.history, size: 48, color: AppColors.slate300),
+                          const SizedBox(height: 12),
+                          Text(
+                            "Historique vide",
+                            style: AppTypography.bodyMedium.copyWith(color: AppColors.slate400),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 }
@@ -281,10 +281,14 @@ class _HomeBodyState extends State<HomeBody> {
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: filtered.length,
                   itemBuilder: (context, index) {
+                    final parts = filtered[index].split(':');
+                    final source = parts.isNotEmpty ? parts.first : 'Recherche';
+                    final term = parts.length > 1 ? parts.sublist(1).join(':') : filtered[index];
+                    
                     return _buildHistoryItem(
-                      Icons.history_rounded, 
-                      filtered[index].split(':').last, 
-                      filtered[index].split(':').first
+                      source == 'Scanner' ? Icons.document_scanner_outlined : Icons.history_rounded,
+                      term,
+                      source,
                     );
                   },
                 );
@@ -308,10 +312,18 @@ class _HomeBodyState extends State<HomeBody> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Besoin d'un remède ?", 
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, fontFamily: 'Outfit')),
-                    Text("Scannez ou tapez le nom.", 
-                      style: TextStyle(color: Colors.white70, fontSize: 13, fontFamily: 'Outfit')),
+                    Text(
+                      "Besoin d'un remède ?",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      "Scannez ou tapez le nom.",
+                      style: TextStyle(color: Colors.white70, fontSize: 13),
+                    ),
                   ],
                 ),
               ),
@@ -323,7 +335,10 @@ class _HomeBodyState extends State<HomeBody> {
         
         GestureDetector(
           onTap: () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const NearbyPharmaciesScreen()));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const NearbyPharmaciesScreen()),
+            );
           },
           child: Container(
             padding: const EdgeInsets.all(AppSpacing.lg),
@@ -334,21 +349,31 @@ class _HomeBodyState extends State<HomeBody> {
             ),
             child: Row(
               children: [
-                IconContainer(
-                  icon: Icons.location_on, 
-                  color: AppColors.warning, 
-                  size: 44, 
-                  iconSize: 22
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.location_on, color: AppColors.warning),
                 ),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text("Pharmacies Proches", 
-                        style: AppTypography.labelLarge.copyWith(color: AppColors.warning.withOpacity(0.9))),
-                      Text("Trouver les 5 plus proches", 
-                        style: AppTypography.bodySmall.copyWith(color: AppColors.warning.withOpacity(0.8))),
+                      Text(
+                        "Pharmacies Proches",
+                        style: AppTypography.labelLarge.copyWith(
+                          color: AppColors.warning.withOpacity(0.9),
+                        ),
+                      ),
+                      Text(
+                        "Trouver les 5 plus proches",
+                        style: AppTypography.bodySmall.copyWith(
+                          color: AppColors.warning.withOpacity(0.8),
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -372,16 +397,23 @@ class _HomeBodyState extends State<HomeBody> {
           color: isSelected ? AppColors.primary : AppColors.surface,
           borderRadius: AppRadius.mdAll,
           boxShadow: isSelected ? AppShadows.soft : null,
-          border: Border.all(color: isSelected ? AppColors.primary : AppColors.slate200),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.slate200,
+          ),
         ),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: isSelected ? Colors.white : AppColors.primary),
+            Icon(
+              icon,
+              size: 18,
+              color: isSelected ? Colors.white : AppColors.primary,
+            ),
             const SizedBox(width: 8),
-            Text(label, 
+            Text(
+              label,
               style: AppTypography.labelMedium.copyWith(
-                color: isSelected ? Colors.white : AppColors.slate700
-              )
+                color: isSelected ? Colors.white : AppColors.slate700,
+              ),
             ),
           ],
         ),
@@ -390,24 +422,34 @@ class _HomeBodyState extends State<HomeBody> {
   }
 
   Widget _buildHistoryItem(IconData icon, String title, String source) {
-    return PremiumCard(
+    return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          IconContainer(icon: icon, color: AppColors.primary, size: 40, iconSize: 20),
-          const SizedBox(width: AppSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppTypography.labelLarge),
-                Text("Via $source", style: AppTypography.bodySmall),
-              ],
-            ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: AppColors.slate100),
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppColors.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
           ),
-          Icon(Icons.arrow_forward_ios_rounded, size: 14, color: AppColors.slate300),
-        ],
+          child: Icon(icon, color: AppColors.primary, size: 20),
+        ),
+        title: Text(
+          title,
+          style: AppTypography.labelLarge,
+        ),
+        subtitle: Text(
+          "Via $source",
+          style: AppTypography.bodySmall,
+        ),
+        trailing: Icon(
+          Icons.arrow_forward_ios_rounded,
+          size: 14,
+          color: AppColors.slate300,
+        ),
       ),
     );
   }
@@ -417,21 +459,18 @@ class _HomeBodyState extends State<HomeBody> {
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("Options de compte"),
-       
-       
-    // content: const Text("Que souhaitez-vous faire ?"),
+        title: const Text("Déconnexion"),
+        content: const Text("Voulez-vous quitter ?"),
         actions: [
-          // AJOUT : Bouton pour aller au profil sans quitter le dialogue
-         
           TextButton(
-            onPressed: () => Navigator.pop(context), 
-            child: Text("Annuler", style: TextStyle(color: AppColors.slate500))
+            onPressed: () => Navigator.pop(context),
+            child: Text("Non", style: TextStyle(color: AppColors.slate500)),
           ),
           TextButton(
             onPressed: () async {
               try {
-                await UserDataService.instance.clearSessionData();
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.clear();
                 await FirebaseAuth.instance.signOut();
                 await GoogleSignIn().signOut();
 
@@ -445,7 +484,10 @@ class _HomeBodyState extends State<HomeBody> {
                 print("Erreur de déconnexion: $e");
               }
             },
-            child: const Text("Se déconnecter", style: TextStyle(color: AppColors.error)),
+            child: const Text(
+              "Oui",
+              style: TextStyle(color: Colors.red),
+            ),
           ),
         ],
       ),
