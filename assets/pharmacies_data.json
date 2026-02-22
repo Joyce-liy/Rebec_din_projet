@@ -1,0 +1,141 @@
+{
+  "pharmacies": [
+    {
+      "id": 1,
+      "nom": "Pharmacie du Centre",
+      "adresse": "Avenue Kennedy, Bastos, Yaoundé",
+      "telephone": "+237 222 00 00 01",
+      "whatsapp": "+237 699 00 00 01",
+      "horaires": "08h00 - 21h00",
+      "localisation": {
+        "type": "Point",
+        "coordinates": [11.521708, 3.873121]
+      },
+      "medicaments": [
+        {
+          "id": "med_001",
+          "nom": "Doliprane",
+          "dosage": "1000mg",
+          "statut": "en_stock",
+          "quantite": 42,
+          "prix": 1500,
+          "last_update": "2026-01-09T20:45:00Z"
+        },
+        {
+          "id": "med_002",
+          "nom": "Efferalgan",
+          "dosage": "500mg",
+          "statut": "stock_limite",
+          "quantite": 8,
+          "prix": 1250,
+          "last_update": "2026-01-09T20:40:00Z"
+        },
+        {
+          "id": "med_003",
+          "nom": "Nurofen",
+          "dosage": "400mg",
+          "statut": "rupture",
+          "quantite": 0,
+          "prix": 2400,
+          "last_update": "2026-01-09T19:15:00Z"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "nom": "Pharmacie de la Paix",
+      "adresse": "Rue principale, Mvan, Yaoundé",
+      "telephone": "+237 222 00 00 02",
+      "whatsapp": "+237 699 00 00 02",
+      "horaires": "07h30 - 22h00",
+      "localisation": {
+        "type": "Point",
+        "coordinates": [11.513324, 3.818472]
+      },
+      "medicaments": [
+        {
+          "id": "med_001",
+          "nom": "Doliprane",
+          "dosage": "1000mg",
+          "statut": "stock_limite",
+          "quantite": 12,
+          "prix": 1600,
+          "last_update": "2026-01-09T20:10:00Z"
+        },
+        {
+          "id": "med_002",
+          "nom": "Efferalgan",
+          "dosage": "500mg",
+          "statut": "en_stock",
+          "quantite": 34,
+          "prix": 1180,
+          "last_update": "2026-01-09T20:05:00Z"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "nom": "Pharmacie Nouvelle",
+      "adresse": "Carrefour Biyem-Assi, Yaoundé",
+      "telephone": "+237 222 00 00 03",
+      "whatsapp": "+237 699 00 00 03",
+      "horaires": "08h30 - 21h30",
+      "localisation": {
+        "type": "Point",
+        "coordinates": [11.481356, 3.822512]
+      },
+      "medicaments": [
+        {
+          "id": "med_002",
+          "nom": "Efferalgan",
+          "dosage": "500mg",
+          "statut": "en_stock",
+          "quantite": 21,
+          "prix": 1190,
+          "last_update": "2026-01-09T19:55:00Z"
+        },
+        {
+          "id": "med_003",
+          "nom": "Nurofen",
+          "dosage": "400mg",
+          "statut": "en_stock",
+          "quantite": 18,
+          "prix": 2450,
+          "last_update": "2026-01-09T19:30:00Z"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "nom": "Pharmacie de l'Étoile",
+      "adresse": "Boulevard du 20 Mai, Nlongkak, Yaoundé",
+      "telephone": "+237 222 00 00 04",
+      "whatsapp": "+237 699 00 00 04",
+      "horaires": "09h00 - 20h30",
+      "localisation": {
+        "type": "Point",
+        "coordinates": [11.497904, 3.866418]
+      },
+      "medicaments": [
+        {
+          "id": "med_001",
+          "nom": "Doliprane",
+          "dosage": "1000mg",
+          "statut": "en_stock",
+          "quantite": 27,
+          "prix": 1550,
+          "last_update": "2026-01-09T20:20:00Z"
+        },
+        {
+          "id": "med_003",
+          "nom": "Nurofen",
+          "dosage": "400mg",
+          "statut": "stock_limite",
+          "quantite": 6,
+          "prix": 2500,
+          "last_update": "2026-01-09T19:50:00Z"
+        }
+      ]
+    }
+  ]
+}
