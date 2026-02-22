@@ -57,7 +57,6 @@ class GeoUtils {
     );
   }
 
-
   /// Computes the initial bearing in degrees from the start point to the end point.
   static double initialBearing({
     required double startLat,

@@ -5,7 +5,10 @@ import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'dart:convert';
+
 import 'package:pharma/models/pharmacy.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pharma/services/location_service.dart';
 import 'package:pharma/services/pharmacy_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
@@ -64,6 +67,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   
   List<_ChatMessage> _messages = [];
 
+  static const String _kMessagesKey = 'chat_messages_v1';
+  static const String _kLastLocationKey = 'last_location_v1';
+
   @override
   void initState() {
     super.initState();
@@ -88,12 +94,81 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     _flutterTts.awaitSpeakCompletion(true);
     _initializeTts();
     _preloadTask = _preloadData();
-    
-    // Add initial welcome message
-    _messages.add(_ChatMessage(
-      text: "Bonjour ! Je suis votre assistant PharmConnect. Comment puis-je vous aider aujourd'hui ?",
-      isUser: false,
-    ));
+    _loadPersistedData();
+  }
+
+  Future<void> _loadPersistedData() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? messagesJson = prefs.getString(_kMessagesKey);
+      if (messagesJson != null && messagesJson.isNotEmpty) {
+        final List<dynamic> decoded = json.decode(messagesJson) as List<dynamic>;
+        final List<_ChatMessage> loaded = decoded.map((e) {
+          return _ChatMessage(
+            text: e['text'] as String? ?? '',
+            isUser: e['isUser'] as bool? ?? false,
+          );
+        }).toList();
+        if (mounted) {
+          setState(() {
+            _messages = loaded;
+          });
+        } else {
+          _messages = loaded;
+        }
+      } else {
+        // default welcome
+        if (_messages.isEmpty) {
+          _messages.add(_ChatMessage(
+            text: "Bonjour ! Je suis votre assistant PharmConnect. Comment puis-je vous aider aujourd'hui ?",
+            isUser: false,
+          ));
+        }
+      }
+
+      final String? locJson = prefs.getString(_kLastLocationKey);
+      if (locJson != null && locJson.isNotEmpty) {
+        final Map<String, dynamic> map = json.decode(locJson) as Map<String, dynamic>;
+        final double? lat = (map['latitude'] as num?)?.toDouble();
+        final double? lng = (map['longitude'] as num?)?.toDouble();
+        if (lat != null && lng != null) {
+          final GeoPoint point = GeoPoint(lat, lng);
+          if (mounted) {
+            setState(() => _lastKnownUserLocation = point);
+          } else {
+            _lastKnownUserLocation = point;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Erreur chargement persisted data: $e');
+    }
+  }
+
+  Future<void> _saveMessages() async {
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final List<Map<String, dynamic>> encoded = _messages
+          .map((m) => {'text': m.text, 'isUser': m.isUser})
+          .toList();
+      await prefs.setString(_kMessagesKey, json.encode(encoded));
+    } catch (e) {
+      debugPrint('Erreur sauvegarde messages: $e');
+    }
+  }
+
+  Future<void> _saveLastLocation() async {
+    try {
+      if (_lastKnownUserLocation == null) return;
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final Map<String, dynamic> map = {
+        'latitude': _lastKnownUserLocation!.latitude,
+        'longitude': _lastKnownUserLocation!.longitude,
+      };
+      await prefs.setString(_kLastLocationKey, json.encode(map));
+    } catch (e) {
+      debugPrint('Erreur sauvegarde location: $e');
+    }
   }
 
   void _initSpeech() async {
@@ -116,10 +191,11 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     super.dispose();
   }
 
-  void _addMessage(String text, bool isUser) {
+  Future<void> _addMessage(String text, bool isUser) async {
     setState(() {
       _messages.add(_ChatMessage(text: text, isUser: isUser));
     });
+    await _saveMessages();
   }
 
   void _toggleListening() async {
@@ -726,6 +802,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       if (!mounted) {
         _catalogCache = catalog;
         _lastKnownUserLocation = location;
+        if (location != null) {
+          await _saveLastLocation();
+        }
         return;
       }
 
@@ -735,6 +814,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
           _lastKnownUserLocation = location;
         }
       });
+      if (location != null) {
+        await _saveLastLocation();
+      }
     } catch (e) {
       debugPrint('Erreur préchargement: $e');
     } finally {

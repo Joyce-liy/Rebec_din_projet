@@ -223,7 +223,7 @@ class _SplashScreenState extends State<SplashScreen>
                               ],
                             ).createShader(bounds),
                             child: const Text(
-                              "PharmConnect",
+                              "Pharm",
                               style: TextStyle(
                                 fontFamily: 'Outfit',
                                 fontSize: 36,

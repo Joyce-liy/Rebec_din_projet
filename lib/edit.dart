@@ -1,10 +1,13 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:pharma/pageconnection/login_screen.dart';
-import 'package:pharma/theme/app_theme.dart';
+import 'package:pharma/pageconnection/login_screen.dart'; 
+import 'package:image_picker/image_picker.dart';
+import 'package:pharma/user_data_service.dart';
+// Importez votre fichier de design system ici
+ import 'package:pharma/theme/app_theme.dart'; 
 
 class EditProfileScreen extends StatefulWidget {
   final String currentName;
@@ -15,405 +18,332 @@ class EditProfileScreen extends StatefulWidget {
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen>
-    with SingleTickerProviderStateMixin {
+class _EditProfileScreenState extends State<EditProfileScreen> {
   late TextEditingController _nameController;
-  bool _isFocused = false;
-  bool _isSaving = false;
-  
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
+  File? _imageFile; 
+  final ImagePicker _picker = ImagePicker();
+  bool _isLoadingImage = true;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.currentName);
-    
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-      ),
-    );
-    
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    
-    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
-    );
-    
-    _animationController.forward();
+    _loadProfileImage();
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _animationController.dispose();
     super.dispose();
   }
 
-  Future<void> _handleLogout() async {
+  // Charger l'image de profil de l'utilisateur connecté
+  Future<void> _loadProfileImage() async {
+    setState(() => _isLoadingImage = true);
+    
     try {
-      await FirebaseAuth.instance.signOut();
-      final GoogleSignIn googleSignIn = GoogleSignIn();
-      await googleSignIn.signOut();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.clear();
-
-      if (!mounted) return;
-
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (route) => false,
-      );
+      final imagePath = await UserDataService.instance.getProfilePicture();
+      
+      print('Chargement de l\'image: $imagePath');
+      
+      if (imagePath != null && imagePath.isNotEmpty) {
+        final file = File(imagePath);
+        if (await file.exists()) {
+          // Force le rafraîchissement en créant une nouvelle instance de File
+          setState(() {
+            _imageFile = File(imagePath);
+          });
+          print('Image chargée: $imagePath');
+        } else {
+          print(' Fichier image introuvable: $imagePath');
+          setState(() => _imageFile = null);
+        }
+      } else {
+        print('Aucune image de profil');
+        setState(() => _imageFile = null);
+      }
     } catch (e) {
-      debugPrint("Erreur lors de la déconnexion: $e");
+      print('Erreur lors du chargement de l\'image: $e');
+      setState(() => _imageFile = null);
+    } finally {
+      setState(() => _isLoadingImage = false);
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
+      );
+
+      if (pickedFile != null) {
+        print('Image sélectionnée: ${pickedFile.path}');
+        
+        // Sauvegarder pour l'utilisateur connecté (copie dans un emplacement permanent)
+        await UserDataService.instance.saveProfilePicture(pickedFile.path);
+        
+        // Recharger l'image depuis l'emplacement permanent
+        await _loadProfileImage();
+        
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Photo de profil mise à jour !"),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Erreur sélection image: $e");
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text("Erreur lors de la déconnexion"),
+          content: Text("Erreur lors de la sélection de l'image: $e"),
           backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          duration: const Duration(seconds: 3),
         ),
       );
     }
   }
 
-  void _saveProfile() async {
-    String newName = _nameController.text.trim();
-    if (newName.isEmpty) {
+  Future<void> _removeImage() async {
+    try {
+      await UserDataService.instance.deleteProfilePicture();
+      setState(() => _imageFile = null);
+      
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Row(
-            children: [
-              const Icon(Icons.error_outline, color: Colors.white, size: 20),
-              const SizedBox(width: 12),
-              const Text("Le nom ne peut pas être vide"),
-            ],
-          ),
-          backgroundColor: AppColors.error,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+        const SnackBar(
+          content: Text("Photo de profil supprimée"),
+          duration: Duration(seconds: 2),
         ),
       );
-      return;
-    }
-
-    setState(() => _isSaving = true);
-    
-    // Simulate save delay
-    await Future.delayed(const Duration(milliseconds: 500));
-    
-    if (mounted) {
-      Navigator.pop(context, newName);
+    } catch (e) {
+      debugPrint("Erreur suppression image: $e");
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    String initial = _nameController.text.isNotEmpty
-        ? _nameController.text[0].toUpperCase()
-        : "U";
+    String name = _nameController.text.trim();
+    String initial = name.isNotEmpty ? name[0].toUpperCase() : "?";
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: Column(
-            children: [
-              // Header
-              _buildHeader(),
-              
-              // Content
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.xl,
+      appBar: AppBar(
+        title: const Text("Modifier le Profil"),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        actions: [
+          // Bouton pour afficher les infos de debug
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            onPressed: () async {
+              await UserDataService.instance.debugPrintAllData();
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Données affichées dans la console")),
+              );
+            },
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+        child: Column(
+          children: [
+            const SizedBox(height: AppSpacing.xxl),
+            
+            // --- SECTION AVATAR ---
+            Center(
+              child: Stack(
+                children: [
+                  // Avatar principal
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.primary.withOpacity(0.1),
+                      border: Border.all(color: Colors.white, width: 4),
+                      boxShadow: AppShadows.medium,
+                      image: _imageFile != null 
+                        ? DecorationImage(
+                            image: FileImage(_imageFile!),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                    ),
+                    child: _isLoadingImage
+                      ? const Center(child: CircularProgressIndicator())
+                      : _imageFile == null 
+                        ? Center(
+                            child: Text(
+                              initial,
+                              style: AppTypography.displayMedium.copyWith(color: AppColors.primary),
+                            ),
+                          )
+                        : null,
                   ),
-                  child: Column(
-                    children: [
-                      const SizedBox(height: 32),
-                      
-                      // Avatar section
-                      _buildAvatarSection(initial),
-                      
-                      const SizedBox(height: 40),
-                      
-                      // Name input
-                      _buildNameInput(),
-                      
-                      const SizedBox(height: 32),
-                      
-                      // Save button
-                      _buildSaveButton(),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Divider
-                      Container(
-                        height: 1,
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: AppSpacing.xl,
-                        ),
+                  
+                  // Bouton pour changer l'image
+                  Positioned(
+                    bottom: 0,
+                    right: 0,
+                    child: GestureDetector(
+                      onTap: _pickImage,
+                      child: Container(
+                        padding: const EdgeInsets.all(AppSpacing.xs),
                         decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.transparent,
-                              AppColors.slate200,
-                              Colors.transparent,
-                            ],
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: AppShadows.soft,
+                        ),
+                        child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 20),
+                      ),
+                    ),
+                  ),
+                  
+                  // Bouton pour supprimer l'image (si elle existe)
+                  if (_imageFile != null)
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: _removeImage,
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: AppColors.error,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: AppShadows.soft,
                           ),
+                          child: const Icon(Icons.close, color: Colors.white, size: 16),
                         ),
                       ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Logout section
-                      _buildLogoutSection(),
-                      
-                      const SizedBox(height: 40),
-                    ],
-                  ),
-                ),
+                    ),
+                ],
               ),
-            ],
-          ),
+            ),
+            
+            const SizedBox(height: AppSpacing.huge),
+
+            // --- CHAMP NOM D'UTILISATEUR ---
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                "Nom d'utilisateur",
+                style: AppTypography.labelMedium.copyWith(color: AppColors.slate500),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            
+            // Utilisation du style d'input du design system
+            TextField(
+              controller: _nameController,
+              onChanged: (value) => setState(() {}),
+              style: AppTypography.bodyLarge.copyWith(fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: "Votre nom",
+                prefixIcon: const Icon(Icons.person_outline_rounded),
+              ),
+            ),
+
+            const SizedBox(height: AppSpacing.massive),
+
+            // --- BOUTON ENREGISTRER (Utilisant GradientButton du Design System) ---
+            GradientButton(
+              text: "Enregistrer les modifications",
+              onPressed: () async {
+                if (_nameController.text.trim().isNotEmpty) {
+                  // Sauvegarder le nom pour l'utilisateur connecté
+                  await UserDataService.instance.saveUserName(_nameController.text.trim());
+                  
+                  print(' Nom sauvegardé: ${_nameController.text.trim()}');
+                  
+                  if (!mounted) return;
+                  Navigator.pop(context, _nameController.text.trim());
+                } else {
+                  _showErrorSnackBar(context);
+                }
+              },
+            ),
+
+            const SizedBox(height: AppSpacing.xl),
+            
+            // Bouton secondaire pour la déconnexion
+            TextButton(
+              onPressed: () => _showLogoutDialog(context),
+              child: Text(
+                "Déconnexion",
+                style: AppTypography.buttonMedium.copyWith(color: AppColors.error),
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.sm, AppSpacing.md, AppSpacing.xl, 0,
+  void _showErrorSnackBar(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text("Le nom ne peut pas être vide"),
+        backgroundColor: AppColors.error,
+        behavior: SnackBarBehavior.floating,
       ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: AppShadows.soft,
-              ),
-              child: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                size: 16,
-                color: AppColors.slate600,
-              ),
-            ),
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Déconnexion"),
+        content: const Text("Voulez-vous vraiment vous déconnecter ?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: const Text("Annuler")
           ),
-          const Spacer(),
-          Text(
-            "Modifier le profil",
-            style: AppTypography.headingSmall,
+          TextButton(
+            onPressed: _handleLogout,
+            child: const Text("Déconnexion", style: TextStyle(color: AppColors.error)),
           ),
-          const Spacer(),
-          const SizedBox(width: 56),
         ],
       ),
     );
   }
 
-  Widget _buildAvatarSection(String initial) {
-    return Column(
-      children: [
-        // Avatar with edit overlay
-        Stack(
-          children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: AppColors.primaryGradient,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withOpacity(0.3),
-                    blurRadius: 24,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Center(
-                child: Text(
-                  initial,
-                  style: AppTypography.displayLarge.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  boxShadow: AppShadows.medium,
-                ),
-                child: Icon(
-                  Icons.camera_alt_rounded,
-                  color: AppColors.primary,
-                  size: 20,
-                ),
-              ),
-            ),
-          ],
-        ),
-        
-        const SizedBox(height: 16),
-        
-        // Hint text
-        Text(
-          "Appuyez pour changer la photo",
-          style: AppTypography.caption.copyWith(
-            color: AppColors.slate400,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildNameInput() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          "Nom d'utilisateur",
-          style: AppTypography.labelMedium.copyWith(
-            color: AppColors.slate700,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Focus(
-          onFocusChange: (hasFocus) => setState(() => _isFocused = hasFocus),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: _isFocused
-                  ? [
-                      BoxShadow(
-                        color: AppColors.primary.withOpacity(0.15),
-                        blurRadius: 16,
-                        offset: const Offset(0, 6),
-                      ),
-                    ]
-                  : AppShadows.soft,
-              border: Border.all(
-                color: _isFocused ? AppColors.primary : AppColors.slate200,
-                width: _isFocused ? 2 : 1.5,
-              ),
-            ),
-            child: TextField(
-              controller: _nameController,
-              onChanged: (_) => setState(() {}),
-              style: AppTypography.bodyLarge.copyWith(
-                color: AppColors.slate800,
-                fontWeight: FontWeight.w600,
-              ),
-              decoration: InputDecoration(
-                hintText: "Votre nom",
-                hintStyle: AppTypography.bodyMedium.copyWith(
-                  color: AppColors.slate400,
-                ),
-                prefixIcon: Container(
-                  margin: const EdgeInsets.only(left: 16, right: 12),
-                  child: Icon(
-                    Icons.person_rounded,
-                    color: _isFocused ? AppColors.primary : AppColors.slate400,
-                    size: 24,
-                  ),
-                ),
-                prefixIconConstraints: const BoxConstraints(minWidth: 0),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 18,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildSaveButton() {
-    final bool hasChanges = _nameController.text.trim() != widget.currentName;
-    
-    return GradientButton(
-      text: "Enregistrer les modifications",
-      icon: Icons.check_rounded,
-      onPressed: hasChanges ? _saveProfile : null,
-      isLoading: _isSaving,
-    );
-  }
-
-  Widget _buildLogoutSection() {
-    return Column(
-      children: [
-        Text(
-          "Zone de danger",
-          style: AppTypography.overline.copyWith(
-            color: AppColors.error,
-            letterSpacing: 1.5,
-          ),
-        ),
-        const SizedBox(height: 16),
-        GestureDetector(
-          onTap: _handleLogout,
-          child: Container(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 14,
-            ),
-            decoration: BoxDecoration(
-              color: AppColors.error.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: AppColors.error.withOpacity(0.2),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.logout_rounded,
-                  color: AppColors.error,
-                  size: 20,
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  "Se déconnecter de l'application",
-                  style: AppTypography.labelMedium.copyWith(
-                    color: AppColors.error,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+  Future<void> _handleLogout() async {
+    try {
+      print(' Déconnexion en cours...');
+      
+      // Effacer uniquement les données de session (pas les données utilisateur)
+      await UserDataService.instance.clearSessionData();
+      
+      // Déconnexion Firebase et Google
+      await FirebaseAuth.instance.signOut();
+      await GoogleSignIn().signOut();
+      
+      print(' Déconnexion réussie');
+      
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+        (route) => false, 
+      );
+    } catch (e) {
+      debugPrint(" Erreur déconnexion: $e");
+    }
   }
 }
