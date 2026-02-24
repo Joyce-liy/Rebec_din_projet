@@ -13,7 +13,13 @@ import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key, required void Function(bool isFocused) onSearchFocusChanged});
+  final List<String>? scannedMedications;
+  
+  const SearchScreen({
+    super.key, 
+    required void Function(bool isFocused) onSearchFocusChanged,
+    this.scannedMedications,
+  });
 
   @override
   _SearchScreenState createState() => _SearchScreenState();
@@ -46,10 +52,26 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     )..repeat(reverse: true);
     _loadSearchHistory();
     _initialize();
+    
+    // Traiter les médicaments scannés s'ils existent
+    if (widget.scannedMedications != null && widget.scannedMedications!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _processScannedMedications();
+      });
+    }
   }
 
   Future<void> _loadSearchHistory() async {
     await HistoryService.instance.load();
+  }
+
+  void _processScannedMedications() {
+    if (widget.scannedMedications == null || widget.scannedMedications!.isEmpty) return;
+    
+    // Joindre tous les médicaments avec un séparateur
+    final searchText = widget.scannedMedications!.join(', ');
+    _searchController.text = searchText;
+    _applyFilter(searchText);
   }
 
   @override
@@ -1213,11 +1235,18 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                         color: Colors.transparent,
                         child: InkWell(
                           borderRadius: BorderRadius.circular(16),
-                          onTap: () {
-                            Navigator.push(
+                          onTap: () async {
+                            final result = await Navigator.push<List<String>>(
                               context,
                               MaterialPageRoute(builder: (context) => const ScannerPage()),
                             );
+                            
+                            // Si des médicaments ont été retournés, les afficher
+                            if (result != null && result.isNotEmpty) {
+                              final searchText = result.join(', ');
+                              _searchController.text = searchText;
+                              _applyFilter(searchText);
+                            }
                           },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 18),
