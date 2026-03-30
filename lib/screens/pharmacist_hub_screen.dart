@@ -1,153 +1,209 @@
-
 import 'package:flutter/material.dart';
 import '../theme.dart';
 import 'add_pharmacy_screen.dart';
 import 'subscription_screen.dart';
 import 'create_ad_screen.dart';
+import 'settings_screen.dart';
+import 'statistique_screen.dart';
+
 
 class PharmacistHubScreen extends StatelessWidget {
+  const PharmacistHubScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFF4F7F6), // Fond gris-vert très doux
-      body: Column(
-        children: [
-          // --- HEADER : PROFIL & BIENVENUE ---
-          _buildHeader(context),
+      backgroundColor: const Color(0xFFFBFDFD),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildHeader(context),
 
-          Expanded(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildSectionTitle("Gestion de l'officine"),
-                  SizedBox(height: 15),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 15),
 
-                  // GRILLE D'ACTIONS PRINCIPALES
-                  GridView.count(
-                    shrinkWrap: true,
-                    physics: NeverScrollableScrollPhysics(),
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 15,
-                    mainAxisSpacing: 15,
-                    childAspectRatio: 1.1,
-                    children: [
-                      _buildActionCard(
-                        context,
-                        title: "Ma Pharmacie",
-                        subtitle: "Localisation GPS",
-                        icon: Icons.map_rounded,
-                        color: PharmaTheme.emeraldGreen,
-                        target: AddPharmacyScreen(),
+                    _buildManagementBanner(context),
+
+                    const SizedBox(height: 30),
+
+                    GridView.count(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 20,
+                      mainAxisSpacing: 20,
+                      childAspectRatio: 0.95,
+                      children: [
+                        _buildActionCard(
+                          context,
+                          "Ma Pharmacie",
+                          "Localisation GPS",
+                          Icons.location_on_rounded,
+                          PharmaTheme.emeraldGreen,
+                          AddPharmacyScreen(), //connexion à la page de création des pharmacies
+                        ),
+                        _buildActionCard(
+                          context,
+                          "Abonnement",
+                          "Gérer mon offre",
+                          Icons.auto_awesome_rounded,
+                          Colors.orangeAccent,
+                          SubscriptionScreen(), // connexion à la page d'abonnement
+                        ),
+                        _buildActionCard(
+                          context,
+                          "Publicité",
+                          "Booster les vues",
+                          Icons.rocket_launch_rounded,
+                          Colors.blueAccent,
+                          CreateAdScreen(), //pour souscrire à une publicité
+                        ),
+                        _buildActionCard(
+                          context,
+                          "Stats",
+                          "Vues et clics",
+                          Icons.bar_chart_rounded,
+                          Colors.purpleAccent,
+                          StatsScreen(), //pour les statistiques
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 35),
+                    const Text(
+                      "Assistance & Réglages",
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF2D3436),
                       ),
-                      _buildActionCard(
-                        context,
-                        title: "Abonnement",
-                        subtitle: "Gérer mon offre",
-                        icon: Icons.card_membership_rounded,
-                        color: Colors.orangeAccent,
-                        target: SubscriptionScreen(),
-                      ),
-                      _buildActionCard(
-                        context,
-                        title: "Publicité",
-                        subtitle: "Booster ma visibilité",
-                        icon: Icons.campaign_rounded,
-                        color: Colors.blueAccent,
-                        target: CreateAdScreen(),
-                      ),
-                      _buildActionCard(
-                        context,
-                        title: "Statistiques",
-                        subtitle: "Vues et clics",
-                        icon: Icons.bar_chart_rounded,
-                        color: Colors.purpleAccent,
-                        target: null, // À créer plus tard
-                      ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 15),
 
-                  SizedBox(height: 30),
-                  _buildSectionTitle("Assistance & Réglages"),
-                  SizedBox(height: 15),
+                    // --- PAS DE 'const' ICI CAR onTap EST DYNAMIQUE ---
+                    _buildOptionTile(
+                      Icons.help_center_rounded,
+                      "Centre d'aide",
+                      "Besoin d'aide ?",
+                      onTap: () {
+                        // Action Aide
+                      },
+                    ),
+                    _buildOptionTile(
+                      Icons.settings_rounded,
+                      "Paramètres",
+                      "Configuration",
+                      onTap: () {
+                        // NAVIGATION VERS SETTINGS
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                        );
+                      },
+                    ),
 
-                  // OPTIONS SUPPLÉMENTAIRES (LIGNES)
-                  _buildOptionTile(Icons.help_outline, "Centre d'aide", "Contacter le support"),
-                  _buildOptionTile(Icons.settings_outlined, "Paramètres", "Compte et sécurité"),
-
-                  SizedBox(height: 30),
-                ],
+                    const SizedBox(height: 40),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  // --- WIDGET : HEADER PERSONNALISÉ ---
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildManagementBanner(BuildContext context) {
     return Container(
-      padding: EdgeInsets.fromLTRB(25, 60, 25, 30),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [PharmaTheme.emeraldGreen, Color(0xFF004D40)],
+          colors: [PharmaTheme.emeraldGreen, const Color(0xFF00695C)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(35)),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: PharmaTheme.emeraldGreen.withOpacity(0.25),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: 30,
-            backgroundColor: Colors.white.withOpacity(0.2),
-            child: Icon(Icons.person, color: Colors.white, size: 35),
-          ),
-          SizedBox(width: 15),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Bonjour,",
-                style: TextStyle(color: Colors.white70, fontSize: 14),
-              ),
-              Text(
-                "Dr. Diallo",
-                style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          Spacer(),
-          // Badge de notification
-          Stack(
-            children: [
-              Icon(Icons.notifications_none_rounded, color: Colors.white, size: 30),
-              Positioned(
-                right: 0,
-                child: Container(
-                  height: 10,
-                  width: 10,
-                  decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  "Gestion de l'officine",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              )
-            ],
+                const SizedBox(height: 12),
+                GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AddPharmacyScreen())),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      "Créer une pharmacie",
+                      style: TextStyle(
+                        color: PharmaTheme.emeraldGreen,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
+          const Icon(Icons.add_business_rounded, color: Colors.white, size: 45),
         ],
       ),
     );
   }
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.blueGrey[900]),
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: PharmaTheme.emeraldGreen.withOpacity(0.1),
+            child: Icon(Icons.person_rounded, color: PharmaTheme.emeraldGreen),
+          ),
+          const SizedBox(width: 12),
+          const Text(
+            "Dr. MOUTENG",
+            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Color(0xFF2D3436)),
+          ),
+          const Spacer(),
+          const Icon(Icons.notifications_none_rounded, size: 26, color: Color(0xFF2D3436)),
+        ],
+      ),
     );
   }
 
-  // --- WIDGET : CARTE D'ACTION ---
-  Widget _buildActionCard(BuildContext context, {required String title, required String subtitle, required IconData icon, required Color color, Widget? target}) {
+  Widget _buildActionCard(BuildContext context, String title, String subtitle, IconData icon, Color color, Widget? target) {
     return GestureDetector(
       onTap: () {
         if (target != null) {
@@ -155,57 +211,41 @@ class PharmacistHubScreen extends StatelessWidget {
         }
       },
       child: Container(
-        padding: EdgeInsets.all(15),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(25),
+          borderRadius: BorderRadius.circular(22),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: Offset(0, 5)),
+            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
           ],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-              child: Icon(icon, color: color, size: 28),
-            ),
-            SizedBox(height: 12),
-            Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            SizedBox(height: 4),
-            Text(subtitle, style: TextStyle(color: Colors.grey, fontSize: 11)),
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 10),
+            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 11)),
           ],
         ),
       ),
     );
   }
 
-  // --- WIDGET : TILE D'OPTION ---
-  Widget _buildOptionTile(IconData icon, String title, String subtitle) {
+  Widget _buildOptionTile(IconData icon, String title, String subtitle, {VoidCallback? onTap}) {
     return Container(
-      margin: EdgeInsets.only(bottom: 12),
-      padding: EdgeInsets.all(15),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(15),
       ),
-      child: Row(
-        children: [
-          Icon(icon, color: Colors.blueGrey),
-          SizedBox(width: 15),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: TextStyle(fontWeight: FontWeight.bold)),
-              Text(subtitle, style: TextStyle(color: Colors.grey, fontSize: 12)),
-            ],
-          ),
-          Spacer(),
-          Icon(Icons.chevron_right, color: Colors.grey),
-        ],
+      child: ListTile(
+        onTap: onTap,
+        leading: Icon(icon, color: Colors.blueGrey, size: 22),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
+        trailing: const Icon(Icons.chevron_right_rounded, size: 18),
       ),
     );
   }
 }
+
