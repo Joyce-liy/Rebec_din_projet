@@ -199,6 +199,43 @@ class PharmacyService {
       return [];
     }
   }
+
+  Future<int?> estimateDrivingTravelTimeSeconds({
+    required double startLatitude,
+    required double startLongitude,
+    required double endLatitude,
+    required double endLongitude,
+  }) async {
+    final url = Uri.parse(
+      'https://router.project-osrm.org/route/v1/driving/'
+      '$startLongitude,$startLatitude;'
+      '$endLongitude,$endLatitude'
+      '?overview=false',
+    );
+
+    try {
+      final response = await http.get(url);
+      if (response.statusCode != 200) {
+        return null;
+      }
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final routes = data['routes'] as List<dynamic>?;
+      if (routes == null || routes.isEmpty) {
+        return null;
+      }
+
+      final first = routes.first as Map<String, dynamic>;
+      final duration = first['duration'];
+      if (duration is num) {
+        return duration.round();
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // --- 4. RECHERCHE MEDICAMENT TEMPS REEL (Simulé via OSM) ---
   Future<List<MedicationCatalogEntry>> searchMedicationRealTime(
     String query, {

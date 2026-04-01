@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:speech_to_text/speech_to_text.dart';
-import 'package:speech_to_text/speech_recognition_error.dart';
 import 'package:url_launcher/url_launcher.dart';
-
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import 'dart:convert';
 
 import 'package:pharma/models/pharmacy.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:pharma/services/location_service.dart';
 import 'package:pharma/services/pharmacy_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
@@ -16,22 +14,18 @@ import 'package:pharma/theme/app_theme.dart';
 
 enum _ConversationStage {
   idle,
-  awaitingMedicationName,
   awaitingPharmacyChoice,
-  awaitingNavigationConfirmation,
+  awaitingActionChoice,
 }
 
 class _PharmacyOption {
   const _PharmacyOption({
-    required this.availability,
+    required this.pharmacy,
     this.distanceMeters,
   });
 
-  final MedicationAvailability availability;
+  final Pharmacy pharmacy;
   final double? distanceMeters;
-
-  Pharmacy get pharmacy => availability.pharmacy;
-  PharmacyMedication get medication => availability.medication;
 }
 
 class ChatAIScreen extends StatefulWidget {
@@ -41,1126 +35,504 @@ class ChatAIScreen extends StatefulWidget {
   State<ChatAIScreen> createState() => _ChatAIScreenState();
 }
 
-class _ChatAIScreenState extends State<ChatAIScreen>
-    with SingleTickerProviderStateMixin {
-  final SpeechToText _speechToText = SpeechToText();
+class _ChatAIScreenState extends State<ChatAIScreen> {
+  final stt.SpeechToText _speechToText = stt.SpeechToText();
   final FlutterTts _flutterTts = FlutterTts();
   final PharmacyService _pharmacyService = PharmacyService();
   final LocationService _locationService = LocationService();
-  
-  bool _isListening = false;
-  String _aiResponse = "Appuyez sur le micro pour commencer";
-  _ConversationStage _stage = _ConversationStage.idle;
-  List<_PharmacyOption> _currentOptions = const [];
-  _PharmacyOption? _selectedOption;
-  Future<void> Function(String)? _pendingOnFinalResult;
-  Future<void> Function()? _pendingOnNoMatch;
-  Future<void>? _preloadTask;
-  List<MedicationCatalogEntry>? _catalogCache;
-  GeoPoint? _lastKnownUserLocation;
-  bool _isPreloading = false;
-  bool _ttsReady = false;
-  Future<void>? _ttsInitTask;
-  
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-  
-  List<_ChatMessage> _messages = [];
+  final TextEditingController _controller = TextEditingController();
 
-  static const String _kMessagesKey = 'chat_messages_v1';
-  static const String _kLastLocationKey = 'last_location_v1';
+  _ConversationStage _stage = _ConversationStage.idle;
+
+  bool _speechAvailable = false;
+  bool _isListening = false;
+
+  List<_PharmacyOption> _currentOptions = [];
+  _PharmacyOption? _selectedOption;
+  final List<_ChatMessage> _messages = [];
+
+  String? _lastMedicationQuery;
+  int? _recommendedIndex;
 
   @override
   void initState() {
     super.initState();
-    
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-      ),
-    );
-    
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-    
-    _pulseAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-    
     _initSpeech();
     _flutterTts.awaitSpeakCompletion(true);
-    _initializeTts();
-    _preloadTask = _preloadData();
-    _loadPersistedData();
+    _configureTts();
+    _addAIMessage(
+      "Bonjour, je suis REBEC-DIN, votre pharmacien virtuel.\nQuel médicament recherchez-vous ?",
+    );
   }
 
-  Future<void> _loadPersistedData() async {
-    try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String? messagesJson = prefs.getString(_kMessagesKey);
-      if (messagesJson != null && messagesJson.isNotEmpty) {
-        final List<dynamic> decoded = json.decode(messagesJson) as List<dynamic>;
-        final List<_ChatMessage> loaded = decoded.map((e) {
-          return _ChatMessage(
-            text: e['text'] as String? ?? '',
-            isUser: e['isUser'] as bool? ?? false,
-          );
-        }).toList();
-        if (mounted) {
-          setState(() {
-            _messages = loaded;
-          });
-        } else {
-          _messages = loaded;
-        }
-      } else {
-        // default welcome
-        if (_messages.isEmpty) {
-          _messages.add(_ChatMessage(
-            text: "Bonjour ! Je suis votre assistant PharmConnect. Comment puis-je vous aider aujourd'hui ?",
-            isUser: false,
-          ));
-        }
-      }
+  Future<void> _initSpeech() async {
+    final available = await _speechToText.initialize();
+    if (!mounted) return;
+    setState(() {
+      _speechAvailable = available;
+    });
+  }
 
-      final String? locJson = prefs.getString(_kLastLocationKey);
-      if (locJson != null && locJson.isNotEmpty) {
-        final Map<String, dynamic> map = json.decode(locJson) as Map<String, dynamic>;
-        final double? lat = (map['latitude'] as num?)?.toDouble();
-        final double? lng = (map['longitude'] as num?)?.toDouble();
-        if (lat != null && lng != null) {
-          final GeoPoint point = GeoPoint(lat, lng);
-          if (mounted) {
-            setState(() => _lastKnownUserLocation = point);
-          } else {
-            _lastKnownUserLocation = point;
+  Future<void> _configureTts() async {
+    await _flutterTts.setLanguage('fr-FR');
+    await _flutterTts.setSpeechRate(0.48);
+    await _flutterTts.setPitch(1.0);
+
+    final voices = await _flutterTts.getVoices;
+    if (voices is List) {
+      Map? chosen;
+      for (final v in voices) {
+        if (v is Map) {
+          final locale = (v['locale'] ?? v['language'] ?? '').toString();
+          if (locale.toLowerCase().startsWith('fr')) {
+            chosen = v;
+            break;
           }
         }
       }
-    } catch (e) {
-      debugPrint('Erreur chargement persisted data: $e');
+      if (chosen != null) {
+        await _flutterTts.setVoice(Map<String, String>.from(chosen));
+      }
     }
   }
 
-  Future<void> _saveMessages() async {
-    try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final List<Map<String, dynamic>> encoded = _messages
-          .map((m) => {'text': m.text, 'isUser': m.isUser})
-          .toList();
-      await prefs.setString(_kMessagesKey, json.encode(encoded));
-    } catch (e) {
-      debugPrint('Erreur sauvegarde messages: $e');
+  Future<String> _askGeminiAdvice(String medication) async {
+    final apiKey = dotenv.env['GEMINI_API_KEY'];
+    if (apiKey == null || apiKey.isEmpty) {
+      return "Je ne peux pas donner de conseils pour le moment (clé API manquante).";
     }
+
+    final url =
+        'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey';
+
+    final response = await http.post(
+      Uri.parse(url),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'contents': [
+          {
+            'parts': [
+              {
+                'text':
+                    "Tu es un pharmacien professionnel. Tu t'appelles REBEC-DIN. "
+                        "Tu réponds en français uniquement. "
+                        "Donne des conseils de base, précautions et contre-indications générales, "
+                        "et rappelle de demander l'avis d'un médecin ou pharmacien en cas de doute. "
+                        "Ne mentionne pas de dosage personnalisé. "
+                        "Médicament : $medication"
+              }
+            ]
+          }
+        ]
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final candidates = data['candidates'] as List<dynamic>?;
+      if (candidates == null || candidates.isEmpty) {
+        return "Je n'ai pas pu générer de conseils pour le moment.";
+      }
+      final content = candidates.first['content'] as Map<String, dynamic>?;
+      final parts = content?['parts'] as List<dynamic>?;
+      final text = parts != null && parts.isNotEmpty ? parts.first['text'] : null;
+      return (text ?? "Je n'ai pas pu générer de conseils.").toString();
+    }
+
+    return "Je n'ai pas pu récupérer les conseils (erreur réseau).";
   }
 
-  Future<void> _saveLastLocation() async {
-    try {
-      if (_lastKnownUserLocation == null) return;
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final Map<String, dynamic> map = {
-        'latitude': _lastKnownUserLocation!.latitude,
-        'longitude': _lastKnownUserLocation!.longitude,
-      };
-      await prefs.setString(_kLastLocationKey, json.encode(map));
-    } catch (e) {
-      debugPrint('Erreur sauvegarde location: $e');
-    }
+  bool _isGreeting(String value) {
+    final raw = value.trim().toLowerCase();
+    return raw == 'bonjour' ||
+        raw == 'salut' ||
+        raw == 'bonsoir' ||
+        raw == 'coucou' ||
+        raw == 'hey' ||
+        raw == 'hello';
   }
 
-  void _initSpeech() async {
-    try {
-      await _speechToText.initialize(
-        onError: _onSpeechError,
-        onStatus: _onSpeechStatus,
+  bool _isClearlyOffTopic(String value) {
+    final raw = value.trim().toLowerCase();
+    const offTopic = {
+      'patate',
+      'pomme de terre',
+      'football',
+      'météo',
+      'musique',
+      'politique',
+      'argent',
+      'jeu',
+      'gaming',
+    };
+    for (final k in offTopic) {
+      if (raw.contains(k)) return true;
+    }
+    return false;
+  }
+
+  // ==========================
+  // RECHERCHE MEDICAMENT
+  // ==========================
+  Future<void> _searchMedication(String medicationName) async {
+    await _addUserMessage(medicationName);
+
+    _lastMedicationQuery = medicationName;
+    _recommendedIndex = null;
+
+    final location = await _locationService.tryGetCurrentPosition();
+    if (location == null) {
+      await _addAIMessage(
+        "Je n'arrive pas à accéder à votre position. Activez la localisation puis réessayez.",
       );
-    } catch (e) {
-      debugPrint("Erreur d'initialisation : $e");
-    }
-    if (mounted) setState(() {});
-  }
-
-  @override
-  void dispose() {
-    _speechToText.stop();
-    _flutterTts.stop();
-    _pulseController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _addMessage(String text, bool isUser) async {
-    setState(() {
-      _messages.add(_ChatMessage(text: text, isUser: isUser));
-    });
-    await _saveMessages();
-  }
-
-  void _toggleListening() async {
-    if (_isListening) {
-      await _speechToText.stop();
-      if (mounted) {
-        setState(() => _isListening = false);
-      }
       return;
     }
 
-    switch (_stage) {
-      case _ConversationStage.idle:
-        await _startMedicationInquiry();
-        break;
-      case _ConversationStage.awaitingMedicationName:
-        await _promptMedicationRepeat();
-        break;
-      case _ConversationStage.awaitingPharmacyChoice:
-        await _promptPharmacySelection();
-        break;
-      case _ConversationStage.awaitingNavigationConfirmation:
-        await _promptNavigationConfirmation();
-        break;
-    }
-  }
-
-  Future<void> _startMedicationInquiry() async {
-    if (!mounted) return;
-    const response = "Quel médicament recherchez-vous aujourd'hui ?";
-    _addMessage(response, false);
-    setState(() {
-      _stage = _ConversationStage.awaitingMedicationName;
-      _aiResponse = response;
-    });
-    await _speak(response);
-    await _startListening(
-      onFinalResult: _handleMedicationName,
-      onNoMatch: _promptMedicationRepeat,
+    final pharmacies = await _pharmacyService.fetchNearbyPharmacies(
+      latitude: location.latitude,
+      longitude: location.longitude,
     );
-  }
 
-  Future<void> _promptMedicationRepeat() async {
-    if (!mounted) return;
-    const response = "Je n'ai pas saisi le nom. Pouvez-vous répéter ?";
-    _addMessage(response, false);
-    setState(() {
-      _aiResponse = response;
-    });
-    await _speak(response);
-    await _startListening(
-      onFinalResult: _handleMedicationName,
-      onNoMatch: _promptMedicationRepeat,
-    );
-  }
-
-  Future<void> _handleMedicationName(String input) async {
-    if (input.isEmpty) {
-      await _promptMedicationRepeat();
-      return;
-    }
-    _addMessage(input, true);
-    await _processMedicationRequest(input);
-  }
-
-  Future<void> _processMedicationRequest(String medicationQuery) async {
-    if (!mounted) return;
-    final searchingMsg = "Je recherche $medicationQuery...";
-    _addMessage(searchingMsg, false);
-    setState(() {
-      _aiResponse = searchingMsg;
-    });
-
-    try {
-      final Future<GeoPoint?> locationFuture = _getUserLocation();
-      final List<MedicationCatalogEntry> catalog = await _ensureCatalogLoaded();
-      final List<MedicationCatalogEntry> matches =
-          _searchCatalog(medicationQuery, catalog);
-      
-      if (matches.isEmpty) {
-        const noResultMsg = "Je n'ai trouvé aucune pharmacie proposant ce médicament.";
-        _addMessage(noResultMsg, false);
-        if (!mounted) return;
-        setState(() {
-          _stage = _ConversationStage.idle;
-          _currentOptions = const [];
-          _selectedOption = null;
-          _aiResponse = noResultMsg;
-        });
-        await _speak(noResultMsg);
-        return;
-      }
-
-      final MedicationCatalogEntry entry =
-          _selectBestMatch(medicationQuery, matches);
-      final GeoPoint? location = await locationFuture;
-      final List<_PharmacyOption> options = _buildOptions(entry, location);
-
-      if (options.isEmpty) {
-        const noLocationMsg = "Aucune pharmacie avec localisation disponible.";
-        _addMessage(noLocationMsg, false);
-        if (!mounted) return;
-        setState(() {
-          _stage = _ConversationStage.idle;
-          _aiResponse = noLocationMsg;
-        });
-        await _speak(noLocationMsg);
-        return;
-      }
-
-      if (!mounted) return;
-      _currentOptions = options;
-      _selectedOption = null;
-      await _presentOptions(entry, location);
-    } catch (e) {
-      const errorMsg = "Une erreur est survenue. Réessayez plus tard.";
-      _addMessage(errorMsg, false);
-      if (!mounted) return;
-      setState(() {
-        _stage = _ConversationStage.idle;
-        _aiResponse = errorMsg;
-      });
-      await _speak(errorMsg);
-    }
-  }
-
-  MedicationCatalogEntry _selectBestMatch(
-      String query, List<MedicationCatalogEntry> matches) {
-    final String normalizedQuery = _normalizeText(query);
-    return matches.firstWhere(
-      (entry) => _normalizeText(entry.nom) == normalizedQuery,
-      orElse: () => matches.first,
-    );
-  }
-
-  List<MedicationCatalogEntry> _searchCatalog(
-    String query,
-    List<MedicationCatalogEntry> catalog,
-  ) {
-    if (query.trim().isEmpty) {
-      return List<MedicationCatalogEntry>.from(catalog);
-    }
-    final String lower = query.toLowerCase();
-    return catalog
-        .where((entry) =>
-            entry.nom.toLowerCase().contains(lower) ||
-            entry.dosage.toLowerCase().contains(lower))
-        .toList();
-  }
-
-  List<_PharmacyOption> _buildOptions(
-      MedicationCatalogEntry entry, GeoPoint? userLocation) {
-    final List<_PharmacyOption> options =
-        entry.availabilities.map((availability) {
-      final GeoLocationPoint? point = availability.pharmacy.localisation;
-      double? distance;
-      if (userLocation != null && point != null) {
-        distance = GeoUtils.haversineDistance(
-          startLat: userLocation.latitude,
-          startLng: userLocation.longitude,
-          endLat: point.latitude,
-          endLng: point.longitude,
-        );
-      }
-      return _PharmacyOption(
-          availability: availability, distanceMeters: distance);
-    }).toList();
-
-    if (userLocation != null) {
-      options.sort((a, b) {
-        final double? distanceA = a.distanceMeters;
-        final double? distanceB = b.distanceMeters;
-        if (distanceA == null && distanceB == null) return 0;
-        if (distanceA == null) return 1;
-        if (distanceB == null) return -1;
-        return distanceA.compareTo(distanceB);
-      });
-    }
-
-    return options.take(5).toList();
-  }
-
-  Future<void> _presentOptions(
-      MedicationCatalogEntry entry, GeoPoint? location) async {
-    if (!mounted) return;
-    final String summary =
-        _buildSummaryMessage(entry.nom, _currentOptions, location);
-    _addMessage(summary, false);
-    setState(() {
-      _stage = _ConversationStage.awaitingPharmacyChoice;
-      _aiResponse = summary;
-    });
-    await _speak(summary);
-    await _startListening(
-      onFinalResult: _handlePharmacySelection,
-      onNoMatch: _promptPharmacySelection,
-    );
-  }
-
-  String _buildSummaryMessage(
-    String medicationName,
-    List<_PharmacyOption> options,
-    GeoPoint? location,
-  ) {
-    final StringBuffer buffer = StringBuffer();
-    buffer.writeln('J\'ai trouvé ${options.length} pharmacies pour $medicationName :');
-    for (var i = 0; i < options.length; i++) {
-      final option = options[i];
-      final pharmacy = option.pharmacy;
-      final String distanceLabel = option.distanceMeters != null
-          ? ' à ${_formatDistance(option.distanceMeters!)}'
-          : '';
-      buffer.writeln('${i + 1}. ${pharmacy.nom}$distanceLabel');
-    }
-    buffer.writeln('Dites le numéro de la pharmacie souhaitée.');
-    return buffer.toString();
-  }
-
-  Future<void> _promptPharmacySelection() async {
-    if (!mounted) return;
-    const prompt = 'Quelle pharmacie choisissez-vous ?';
-    _addMessage(prompt, false);
-    setState(() {
-      _stage = _ConversationStage.awaitingPharmacyChoice;
-      _aiResponse = prompt;
-    });
-    await _speak(prompt);
-    await _startListening(
-      onFinalResult: _handlePharmacySelection,
-      onNoMatch: _promptPharmacySelection,
-    );
-  }
-
-  Future<void> _handlePharmacySelection(String input) async {
-    _addMessage(input, true);
-    
-    if (_currentOptions.isEmpty) {
-      const noOptions = 'Aucune pharmacie disponible.';
-      _addMessage(noOptions, false);
-      if (!mounted) return;
-      setState(() {
-        _stage = _ConversationStage.idle;
-        _aiResponse = noOptions;
-      });
-      await _speak(noOptions);
+    if (pharmacies.isEmpty) {
+      await _addAIMessage(
+        "Je ne trouve aucune pharmacie proche pour le moment. Réessayez dans quelques secondes.",
+      );
       return;
     }
 
-    final _PharmacyOption? selected = _matchPharmacyOption(input);
-    if (selected == null) {
-      const retry = "Je n'ai pas compris. Répétez le numéro.";
-      _addMessage(retry, false);
-      await _speak(retry);
-      await _startListening(onFinalResult: _handlePharmacySelection);
-      return;
-    }
+    final options = pharmacies.map((pharmacy) {
+      final point = pharmacy.localisation;
+      final distance = point == null
+          ? null
+          : GeoUtils.haversineDistance(
+              startLat: location.latitude,
+              startLng: location.longitude,
+              endLat: point.latitude,
+              endLng: point.longitude,
+            );
+      return _PharmacyOption(pharmacy: pharmacy, distanceMeters: distance);
+    }).toList()
+      ..sort(
+        (a, b) =>
+            (a.distanceMeters ?? 999999).compareTo(b.distanceMeters ?? 999999),
+      );
 
-    if (!mounted) return;
-    _selectedOption = selected;
-    _stage = _ConversationStage.awaitingNavigationConfirmation;
-    final prompt =
-        "Vous avez choisi ${selected.pharmacy.nom}. Voulez-vous l'itinéraire ?";
-    _addMessage(prompt, false);
-    setState(() {
-      _aiResponse = prompt;
-    });
-    await _speak(prompt);
-    await _startListening(onFinalResult: _handleNavigationResponse);
-  }
+    _currentOptions = options.take(5).toList();
 
-  _PharmacyOption? _matchPharmacyOption(String input) {
-    if (input.isEmpty) return null;
-    final String normalizedInput = _normalizeText(input);
-
-    final Map<String, int> numberWords = {
-      'un': 1, 'une': 1, 'premier': 1,
-      'deux': 2, 'deuxieme': 2,
-      'trois': 3, 'troisieme': 3,
-      'quatre': 4, 'quatrieme': 4,
-      'cinq': 5, 'cinquieme': 5,
-    };
-
-    for (final entry in numberWords.entries) {
-      if (normalizedInput.contains(entry.key)) {
-        final int index = entry.value;
-        if (index >= 1 && index <= _currentOptions.length) {
-          return _currentOptions[index - 1];
-        }
-      }
-    }
-
-    final RegExp numberRegex = RegExp(r'(\d+)');
-    final Match? numberMatch = numberRegex.firstMatch(normalizedInput);
-    if (numberMatch != null) {
-      final int? index = int.tryParse(numberMatch.group(1) ?? '');
-      if (index != null && index >= 1 && index <= _currentOptions.length) {
-        return _currentOptions[index - 1];
-      }
-    }
-
+    final travelTimesSeconds = <int?>[];
     for (final option in _currentOptions) {
-      final String normalizedName = _normalizeText(option.pharmacy.nom);
-      if (normalizedInput.contains(normalizedName) ||
-          normalizedName.contains(normalizedInput)) {
-        return option;
+      final point = option.pharmacy.localisation;
+      if (point == null) {
+        travelTimesSeconds.add(null);
+        continue;
+      }
+      final seconds = await _pharmacyService.estimateDrivingTravelTimeSeconds(
+        startLatitude: location.latitude,
+        startLongitude: location.longitude,
+        endLatitude: point.latitude,
+        endLongitude: point.longitude,
+      );
+      travelTimesSeconds.add(seconds);
+    }
+
+    int? bestIndex;
+    int? bestSeconds;
+    for (int i = 0; i < travelTimesSeconds.length; i++) {
+      final seconds = travelTimesSeconds[i];
+      if (seconds == null) continue;
+      if (bestSeconds == null || seconds < bestSeconds) {
+        bestSeconds = seconds;
+        bestIndex = i;
+      }
+    }
+    _recommendedIndex = bestIndex ?? 0;
+
+    String response =
+        "Je ne peux pas vérifier le stock du médicament en ligne, mais je peux vous indiquer les pharmacies les plus proches pour vous y rendre.\n\n";
+
+    if (_recommendedIndex != null && _recommendedIndex! >= 0) {
+      final recommended = _currentOptions[_recommendedIndex!];
+      final seconds = travelTimesSeconds[_recommendedIndex!];
+      final minutes = seconds == null ? null : (seconds / 60).round();
+      final label = minutes == null
+          ? "la plus proche"
+          : "la plus rapide selon un temps de trajet estimé (~${minutes} min)";
+      response +=
+          "Recommandation REBEC-DIN : ${recommended.pharmacy.nom} ($label).\n\n";
+    }
+
+    response +=
+        "Voici les 5 pharmacies les plus proches :\n\n";
+
+    for (int i = 0; i < _currentOptions.length; i++) {
+      final option = _currentOptions[i];
+      final km = option.distanceMeters == null
+          ? null
+          : (option.distanceMeters! / 1000);
+      final distanceLabel = km == null
+          ? ""
+          : " (${km.toStringAsFixed(2)} km)";
+
+      final seconds = travelTimesSeconds[i];
+      final minutes = seconds == null ? null : (seconds / 60).round();
+      final trafficLabel = minutes == null ? "" : " - ~${minutes} min";
+
+      response += "${i + 1}. ${option.pharmacy.nom}$distanceLabel\n";
+      if (trafficLabel.isNotEmpty) {
+        response += "   $trafficLabel\n";
       }
     }
 
-    return null;
+    response += "\nDites ou entrez le numéro de la pharmacie.";
+
+    await _addAIMessage(response);
+    _stage = _ConversationStage.awaitingPharmacyChoice;
   }
 
-  Future<void> _promptNavigationConfirmation() async {
-    if (_selectedOption == null || !mounted) {
-      const noSelection = "Aucune pharmacie sélectionnée.";
-      _addMessage(noSelection, false);
-      setState(() {
-        _stage = _ConversationStage.idle;
-        _aiResponse = noSelection;
-      });
-      await _speak(noSelection);
+  // ==========================
+  // NAVIGATION
+  // ==========================
+  Future<void> _launchNavigation() async {
+    if (_selectedOption == null) return;
+
+    final point = _selectedOption!.pharmacy.localisation;
+    if (point == null) return;
+
+    final url = Uri.parse(
+        "https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}&travelmode=driving");
+
+    await launchUrl(url, mode: LaunchMode.externalApplication);
+
+    await _addAIMessage(
+        "Itinéraire lancé vers ${_selectedOption!.pharmacy.nom}.");
+  }
+
+  Future<void> _giveBasicAdvice() async {
+    final medication = _lastMedicationQuery;
+    if (medication == null || medication.trim().isEmpty) {
+      await _addAIMessage("Dites-moi d'abord le nom du médicament.");
       return;
     }
 
-    final prompt =
-        "Lancer l'itinéraire vers ${_selectedOption!.pharmacy.nom} ?";
-    _addMessage(prompt, false);
+    await _addAIMessage("Très bien. Je vous donne des conseils de base pour $medication.");
+    final advice = await _askGeminiAdvice(medication);
+    await _addAIMessage(advice);
+  }
+
+  // ==========================
+  // MESSAGE HELPERS
+  // ==========================
+  Future<void> _addAIMessage(String text) async {
+    if (_isListening) {
+      await _stopListening();
+    }
     setState(() {
-      _stage = _ConversationStage.awaitingNavigationConfirmation;
-      _aiResponse = prompt;
+      _messages.add(_ChatMessage(text: text, isUser: false));
     });
-    await _speak(prompt);
-    await _startListening(
-      onFinalResult: _handleNavigationResponse,
-      onNoMatch: _promptNavigationConfirmation,
-    );
+    await _flutterTts.speak(text);
   }
 
-  Future<void> _handleNavigationResponse(String input) async {
-    _addMessage(input, true);
-    
-    if (!mounted) return;
-    final _PharmacyOption? option = _selectedOption;
-    if (option == null) {
-      const noPharmacy = "Pas de pharmacie sélectionnée.";
-      _addMessage(noPharmacy, false);
-      setState(() {
-        _stage = _ConversationStage.idle;
-        _aiResponse = noPharmacy;
-      });
-      await _speak(noPharmacy);
-      return;
-    }
-
-    final String normalizedInput = _normalizeText(input);
-    final bool isPositive =
-        normalizedInput.contains('oui') || normalizedInput.contains('yes');
-    final bool isNegative =
-        normalizedInput.contains('non') || normalizedInput.contains('no');
-
-    if (!isPositive && !isNegative) {
-      const clarify = "Répondez par oui ou non.";
-      _addMessage(clarify, false);
-      await _speak(clarify);
-      await _startListening(onFinalResult: _handleNavigationResponse);
-      return;
-    }
-
-    if (isNegative) {
-      const cancelled = "D'accord, l'itinéraire n'est pas lancé.";
-      _addMessage(cancelled, false);
-      setState(() {
-        _stage = _ConversationStage.idle;
-        _aiResponse = cancelled;
-        _currentOptions = const [];
-        _selectedOption = null;
-      });
-      await _speak(cancelled);
-      return;
-    }
-
-    final Pharmacy pharmacy = option.pharmacy;
-    final GeoLocationPoint? point = pharmacy.localisation;
-
-    if (point == null) {
-      const noLoc = "Localisation non disponible pour cette pharmacie.";
-      _addMessage(noLoc, false);
-      setState(() {
-        _stage = _ConversationStage.idle;
-        _aiResponse = noLoc;
-        _currentOptions = const [];
-        _selectedOption = null;
-      });
-      await _speak(noLoc);
-      return;
-    }
-
-    final Uri url = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}&travelmode=driving',
-    );
-
-    final bool launched =
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-    final successMsg = launched
-        ? "J'ai ouvert l'itinéraire vers ${pharmacy.nom}."
-        : "Impossible d'ouvrir l'itinéraire.";
-    _addMessage(successMsg, false);
+  Future<void> _addUserMessage(String text) async {
     setState(() {
-      _stage = _ConversationStage.idle;
-      _aiResponse = successMsg;
-      _currentOptions = const [];
-      _selectedOption = null;
+      _messages.add(_ChatMessage(text: text, isUser: true));
     });
-    await _speak(successMsg);
   }
 
-  Future<void> _startListening({
-    required Future<void> Function(String) onFinalResult,
-    Future<void> Function()? onNoMatch,
-  }) async {
-    final bool available = _speechToText.isAvailable ||
-        await _speechToText.initialize(
-          onError: (error) =>
-              debugPrint("Erreur reconnaissance : ${error.errorMsg}"),
-        );
-
-    if (!available) {
-      const notAvailable = "Micro non disponible.";
-      _addMessage(notAvailable, false);
-      if (!mounted) return;
-      setState(() {
-        _stage = _ConversationStage.idle;
-        _aiResponse = notAvailable;
-      });
-      await _speak(notAvailable);
-      return;
-    }
-
-    if (!mounted) return;
-    setState(() => _isListening = true);
-
-    _pendingOnFinalResult = onFinalResult;
-    _pendingOnNoMatch = onNoMatch;
-
-    _speechToText.listen(
-      listenMode: ListenMode.dictation,
-      localeId: 'fr_FR',
-      cancelOnError: true,
-      partialResults: false,
-      pauseFor: const Duration(seconds: 3),
-      listenFor: const Duration(seconds: 10),
-      onResult: (result) async {
-        if (!result.finalResult) return;
-        await _speechToText.stop();
-        if (mounted) {
-          setState(() => _isListening = false);
-        }
-        final String recognized = result.recognizedWords.trim();
-        if (recognized.isEmpty) {
-          await _handleRepeatRequest(
-            message: "Je n'ai pas compris. Pouvez-vous répéter ?",
-            finalCallback: onFinalResult,
-            retryCallback: onNoMatch,
-          );
-          return;
-        }
-        await onFinalResult(recognized);
-        _clearPendingCallbacks();
-      },
-    );
-  }
-
-  Future<void> _handleRepeatRequest({
-    required String message,
-    Future<void> Function(String)? finalCallback,
-    Future<void> Function()? retryCallback,
-  }) async {
-    if (retryCallback != null) {
-      await retryCallback();
-      return;
-    }
-
-    if (!mounted || finalCallback == null) return;
-    _addMessage(message, false);
-    setState(() {
-      _aiResponse = message;
-    });
-    await _speak(_aiResponse);
-    await _startListening(
-      onFinalResult: finalCallback,
-      onNoMatch: retryCallback,
-    );
-  }
-
-  void _clearPendingCallbacks() {
-    _pendingOnFinalResult = null;
-    _pendingOnNoMatch = null;
-  }
-
-  void _onSpeechStatus(String status) {
-    if (status == 'notListening' && mounted) {
-      setState(() => _isListening = false);
-    }
-  }
-
-  void _onSpeechError(SpeechRecognitionError error) {
-    debugPrint("Erreur reconnaissance : ${error.errorMsg}");
-    _speechToText.stop();
-    if (mounted) {
-      setState(() => _isListening = false);
-    }
-
-    final Future<void> Function(String)? finalCallback = _pendingOnFinalResult;
-    final Future<void> Function()? retryCallback = _pendingOnNoMatch;
-
-    if (error.errorMsg == 'error_no_match' && finalCallback != null) {
-      Future.microtask(() async {
-        await _handleRepeatRequest(
-          message: "Je n'ai pas compris. Répétez.",
-          finalCallback: finalCallback,
-          retryCallback: retryCallback,
-        );
-      });
-      return;
-    }
-
-    _clearPendingCallbacks();
-  }
-
-  Future<void> _speak(String text) async {
-    final String trimmed = text.trim();
-    if (trimmed.isEmpty) return;
-    await _initializeTts();
-    if (!_ttsReady) return;
-    try {
-      await _flutterTts.stop();
-    } catch (e) {
-      debugPrint('Erreur arrêt TTS : $e');
-    }
-    try {
-      await _flutterTts.speak(trimmed);
-    } catch (e) {
-      debugPrint('Erreur lancement TTS : $e');
-    }
-  }
-
-  String _formatDistance(double distanceMeters) {
-    if (distanceMeters < 1000) {
-      return '${distanceMeters.round()} m';
-    }
-    return '${(distanceMeters / 1000).toStringAsFixed(1)} km';
-  }
-
-  String _normalizeText(String value) {
-    final String lower = value.toLowerCase();
-    const Map<String, String> replacements = {
-      'à': 'a', 'â': 'a', 'ä': 'a', 'ç': 'c', 'é': 'e', 'è': 'e',
-      'ê': 'e', 'ë': 'e', 'î': 'i', 'ï': 'i', 'ô': 'o', 'ö': 'o',
-      'ù': 'u', 'û': 'u', 'ü': 'u', 'ÿ': 'y',
-    };
-    return lower
-        .split('')
-        .map((char) => replacements[char] ?? char)
-        .join()
-        .replaceAll(RegExp(r'[^a-z0-9 ]'), '')
-        .trim();
-  }
-
-  Future<void> _initializeTts() async {
-    if (_ttsReady) return;
-    if (_ttsInitTask != null) {
-      await _ttsInitTask;
-      return;
-    }
-    _ttsInitTask = () async {
-      try {
-        await _flutterTts.awaitSpeakCompletion(true);
-        await _flutterTts.setLanguage('fr-FR');
-        await _flutterTts.setSpeechRate(0.95);
-        await _flutterTts.setVolume(1.0);
-        _ttsReady = true;
-      } catch (e) {
-        debugPrint('Erreur initialisation TTS : $e');
-        _ttsReady = false;
-      }
-    }();
-    await _ttsInitTask;
-  }
-
-  Future<void> _preloadData() async {
-    if (_isPreloading) return;
-    _isPreloading = true;
-    try {
-      final List<MedicationCatalogEntry> catalog =
-          await _pharmacyService.fetchCatalog();
-      GeoPoint? location;
-      try {
-        location = await _locationService
-            .tryGetCurrentPosition()
-            .timeout(const Duration(seconds: 5));
-      } catch (e) {
-        debugPrint('Localisation indisponible: $e');
-      }
-
-      if (!mounted) {
-        _catalogCache = catalog;
-        _lastKnownUserLocation = location;
-        if (location != null) {
-          await _saveLastLocation();
-        }
-        return;
-      }
-
-      setState(() {
-        _catalogCache = catalog;
-        if (location != null) {
-          _lastKnownUserLocation = location;
-        }
-      });
-      if (location != null) {
-        await _saveLastLocation();
-      }
-    } catch (e) {
-      debugPrint('Erreur préchargement: $e');
-    } finally {
-      _isPreloading = false;
-    }
-  }
-
-  Future<List<MedicationCatalogEntry>> _ensureCatalogLoaded() async {
-    if (_catalogCache != null) {
-      return _catalogCache!;
-    }
-    if (_preloadTask == null) {
-      _preloadTask = _preloadData();
-    }
-    await _preloadTask;
-    return _catalogCache ?? await _pharmacyService.fetchCatalog();
-  }
-
-  Future<GeoPoint?> _getUserLocation() async {
-    if (_lastKnownUserLocation != null) {
-      return _lastKnownUserLocation;
-    }
-    try {
-      final GeoPoint? location = await _locationService
-          .tryGetCurrentPosition()
-          .timeout(const Duration(seconds: 5));
-      if (location != null) {
-        _lastKnownUserLocation = location;
-      }
-      return location;
-    } catch (e) {
-      debugPrint('Erreur localisation: $e');
-      return null;
-    }
-  }
-
+  // ==========================
+  // UI
+  // ==========================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Header
-            _buildHeader(),
-            
-            // Chat messages
-            Expanded(
-              child: _buildChatArea(),
-            ),
-            
-            // Mic control
-            _buildMicControl(),
-          ],
-        ),
+      appBar: AppBar(
+        title: const Text("Assistant IA Pharmacie"),
+        backgroundColor: AppColors.primary,
       ),
-    );
-  }
-
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.sm, AppSpacing.md, AppSpacing.xl, AppSpacing.md,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.slate900.withOpacity(0.04),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
+      body: Column(
         children: [
-          IconButton(
-            onPressed: () => Navigator.pop(context),
-            icon: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.slate100,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                Icons.arrow_back_ios_new_rounded,
-                size: 16,
-                color: AppColors.slate600,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              gradient: AppColors.heroGradient,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: const Icon(
-              Icons.auto_awesome_rounded,
-              color: Colors.white,
-              size: 22,
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(12),
+              itemCount: _messages.length,
+              itemBuilder: (_, i) {
+                final msg = _messages[i];
+                return Align(
+                  alignment: msg.isUser
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: msg.isUser
+                          ? AppColors.primary
+                          : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      msg.text,
+                      style: TextStyle(
+                        color:
+                            msg.isUser ? Colors.white : Colors.black,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(8),
+            color: Colors.white,
+            child: Row(
               children: [
-                Text(
-                  "Assistant PharmConnect",
-                  style: AppTypography.labelLarge.copyWith(
-                    fontWeight: FontWeight.w700,
+                IconButton(
+                  icon: Icon(_isListening ? Icons.mic : Icons.mic_none),
+                  onPressed: _speechAvailable
+                      ? () async {
+                          if (_isListening) {
+                            await _stopListening();
+                          } else {
+                            await _startListening();
+                          }
+                        }
+                      : null,
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    decoration: const InputDecoration(
+                      hintText: "Entrez un médicament...",
+                      border: InputBorder.none,
+                    ),
+                    onSubmitted: (value) async {
+                      await _handleInput(value);
+                    },
                   ),
                 ),
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: AppColors.success,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      "En ligne",
-                      style: AppTypography.caption.copyWith(
-                        color: AppColors.success,
-                      ),
-                    ),
-                  ],
-                ),
+                IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: () async {
+                    await _handleInput(_controller.text);
+                  },
+                )
               ],
             ),
-          ),
+          )
         ],
       ),
     );
   }
 
-  Widget _buildChatArea() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: AppSpacing.lg),
-        itemCount: _messages.length,
-        itemBuilder: (context, index) {
-          final message = _messages[index];
-          return _buildMessageBubble(message);
-        },
-      ),
+  Future<void> _startListening() async {
+    if (!_speechAvailable) return;
+    await _flutterTts.stop();
+
+    setState(() {
+      _isListening = true;
+    });
+
+    await _speechToText.listen(
+      localeId: 'fr_FR',
+      listenMode: stt.ListenMode.confirmation,
+      onResult: (result) async {
+        final words = result.recognizedWords.trim();
+        if (words.isEmpty) return;
+        if (result.finalResult) {
+          await _stopListening();
+          await _handleInput(words);
+        }
+      },
     );
   }
 
-  Widget _buildMessageBubble(_ChatMessage message) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment:
-            message.isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!message.isUser) ...[
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.auto_awesome_rounded,
-                color: Colors.white,
-                size: 16,
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
-              ),
-              decoration: BoxDecoration(
-                gradient: message.isUser
-                    ? AppColors.primaryGradient
-                    : null,
-                color: message.isUser ? null : Colors.white,
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(18),
-                  topRight: const Radius.circular(18),
-                  bottomLeft: Radius.circular(message.isUser ? 18 : 4),
-                  bottomRight: Radius.circular(message.isUser ? 4 : 18),
-                ),
-                boxShadow: AppShadows.soft,
-              ),
-              child: Text(
-                message.text,
-                style: AppTypography.bodyMedium.copyWith(
-                  color: message.isUser ? Colors.white : AppColors.slate700,
-                  height: 1.4,
-                ),
-              ),
-            ),
-          ),
-          if (message.isUser) ...[
-            const SizedBox(width: 8),
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: AppColors.slate200,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(
-                Icons.person_rounded,
-                color: AppColors.slate500,
-                size: 18,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
+  Future<void> _stopListening() async {
+    if (!_isListening) return;
+    await _speechToText.stop();
+    if (!mounted) return;
+    setState(() {
+      _isListening = false;
+    });
   }
 
-  Widget _buildMicControl() {
-    return Container(
-      padding: EdgeInsets.fromLTRB(
-        AppSpacing.xl,
-        AppSpacing.lg,
-        AppSpacing.xl,
-        MediaQuery.of(context).padding.bottom + AppSpacing.lg,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.slate900.withOpacity(0.06),
-            blurRadius: 16,
-            offset: const Offset(0, -4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // Listening indicator
-          AnimatedOpacity(
-            opacity: _isListening ? 1 : 0,
-            duration: const Duration(milliseconds: 200),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 10,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                  color: AppColors.primary.withOpacity(0.2),
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.primary,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    "Je vous écoute...",
-                    style: AppTypography.labelMedium.copyWith(
-                      color: AppColors.primary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          
-          // Mic button
-          AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder: (context, child) {
-              return Transform.scale(
-                scale: _isListening ? _pulseAnimation.value : 1.0,
-                child: GestureDetector(
-                  onTap: _toggleListening,
-                  child: Container(
-                    width: 72,
-                    height: 72,
-                    decoration: BoxDecoration(
-                      gradient: _isListening
-                          ? const LinearGradient(
-                              colors: [AppColors.error, Color(0xFFFF6B6B)],
-                            )
-                          : AppColors.heroGradient,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: (_isListening
-                                  ? AppColors.error
-                                  : AppColors.primary)
-                              .withOpacity(0.4),
-                          blurRadius: 24,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      _isListening
-                          ? Icons.stop_rounded
-                          : Icons.mic_rounded,
-                      color: Colors.white,
-                      size: 32,
-                    ),
-                  ),
-                ),
-              );
-            },
-          ),
-          
-          const SizedBox(height: 12),
-          
-          Text(
-            _isListening
-                ? "Parlez maintenant..."
-                : "Appuyez pour parler",
-            style: AppTypography.bodySmall.copyWith(
-              color: AppColors.slate500,
-            ),
-          ),
-        ],
-      ),
-    );
+  int? _parseChoice(String value) {
+    final raw = value.trim().toLowerCase();
+
+    final direct = int.tryParse(raw);
+    if (direct != null) return direct;
+
+    final digitMatch = RegExp(r'\b(\d+)\b').firstMatch(raw);
+    if (digitMatch != null) {
+      return int.tryParse(digitMatch.group(1) ?? '');
+    }
+
+    const map = {
+      'un': 1,
+      'une': 1,
+      'deux': 2,
+      'trois': 3,
+      'quatre': 4,
+      'cinq': 5,
+    };
+    for (final entry in map.entries) {
+      if (raw.contains(entry.key)) return entry.value;
+    }
+    return null;
+  }
+
+  Future<void> _handleInput(String value) async {
+    if (value.isEmpty) return;
+
+    _controller.clear();
+
+    if (_isGreeting(value)) {
+      await _addAIMessage(
+        "Bonjour ! Je suis REBEC-DIN. Dites-moi le nom d'un médicament, et je vous propose les pharmacies les plus proches.",
+      );
+      return;
+    }
+
+    if (_isClearlyOffTopic(value)) {
+      await _addAIMessage(
+        "Je suis REBEC-DIN, et je reste dans le domaine pharmacie/médicaments. Dites-moi plutôt le nom d'un médicament, un symptôme, ou demandez-moi une pharmacie proche.",
+      );
+      return;
+    }
+
+    if (_stage == _ConversationStage.idle) {
+      await _searchMedication(value);
+    } else if (_stage == _ConversationStage.awaitingPharmacyChoice) {
+      final index = _parseChoice(value);
+      if (index != null &&
+          index > 0 &&
+          index <= _currentOptions.length) {
+        _selectedOption = _currentOptions[index - 1];
+
+        await _addAIMessage(
+          "Que souhaitez-vous faire ?\n1. Lancer l'itinéraire\n2. Conseils de base sur le médicament\n3. Rechercher un autre médicament",
+        );
+        _stage = _ConversationStage.awaitingActionChoice;
+      } else {
+        await _addAIMessage("Je n'ai pas compris. Dites un numéro entre 1 et ${_currentOptions.length}.");
+      }
+    } else if (_stage == _ConversationStage.awaitingActionChoice) {
+      final choice = _parseChoice(value);
+      if (choice == 1) {
+        await _launchNavigation();
+        _stage = _ConversationStage.idle;
+      } else if (choice == 2) {
+        await _giveBasicAdvice();
+        _stage = _ConversationStage.idle;
+      } else if (choice == 3) {
+        _selectedOption = null;
+        _currentOptions = [];
+        _stage = _ConversationStage.idle;
+        await _addAIMessage("Très bien. Quel médicament recherchez-vous ?");
+      } else {
+        await _addAIMessage("Dites 1, 2 ou 3.");
+      }
+    }
   }
 }
 

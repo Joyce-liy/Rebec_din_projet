@@ -45,5 +45,13 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>L'application a besoin du microphone pour la recherche vocale de pharmacies.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>L'application a besoin de la reconnaissance vocale pour comprendre votre demande.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>L'application a besoin de votre position pour trouver les pharmacies les plus proches.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>L'application a besoin de votre position pour trouver les pharmacies les plus proches.</string>
 </dict>
 </plist>
