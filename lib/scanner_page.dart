@@ -148,7 +148,7 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                       decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                       child: _isProcessing 
                         ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Colors.green, strokeWidth: 3))
-                        : const Icon(Icons.qr_code_scanner, size: 40, color: Colors.green), // TON ANCIENNE ICONE
+                        : const Icon(Icons.qr_code_scanner, size: 40, color: Colors.green),
                     ),
                   ),
                 ),
@@ -262,13 +262,24 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
                   ),
                   onPressed: () {
-                    for (var med in _detectedMeds) {
-                      if (med['selected']) HistoryService.instance.add(med['name'], source: "Scanner IA");
+                    // Récupérer les médicaments sélectionnés
+                    final selectedMedications = _detectedMeds
+                        .where((med) => med['selected'] == true)
+                        .map((med) => med['name'] as String)
+                        .toList();
+                    
+                    // Ajouter à l'historique
+                    for (var medName in selectedMedications) {
+                      HistoryService.instance.add(medName, source: "Scanner IA");
                     }
-                    Navigator.pop(context); 
-                    Navigator.pop(context); 
+                    
+                    // Fermer la bottom sheet
+                    Navigator.pop(context);
+                    
+                    // Retourner les médicaments à SearchScreen
+                    Navigator.pop(context, selectedMedications);
                   },
-                  child: const Text("VÉRIFIER LE STOCK", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: const Text("RECHERCHER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
