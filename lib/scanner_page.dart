@@ -11,13 +11,16 @@ class ScannerPage extends StatefulWidget {
   State<ScannerPage> createState() => _ScannerPageState();
 }
 
-class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStateMixin {
+class _ScannerPageState extends State<ScannerPage>
+    with SingleTickerProviderStateMixin {
   CameraController? _controller;
   bool _isInitialized = false;
   bool _isProcessing = false;
+
+  // TextRecognizer gardé pour usage futur éventuel
   final TextRecognizer _textRecognizer = TextRecognizer();
   late AnimationController _animationController;
-  
+
   List<Map<String, dynamic>> _detectedMeds = [];
 
   @override
@@ -34,10 +37,9 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     final cameras = await availableCameras();
     if (cameras.isEmpty) return;
 
-    // Utilisation de 'high' pour la stabilité sur Android
     _controller = CameraController(
-      cameras[0], 
-      ResolutionPreset.high, 
+      cameras[0],
+      ResolutionPreset.high,
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.jpeg,
     );
@@ -52,7 +54,9 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
   }
 
   Future<void> _scanImage() async {
-    if (_controller == null || !_controller!.value.isInitialized || _isProcessing) return;
+    if (_controller == null ||
+        !_controller!.value.isInitialized ||
+        _isProcessing) return;
 
     setState(() => _isProcessing = true);
 
@@ -60,16 +64,16 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       final XFile image = await _controller!.takePicture();
       final bytes = await image.readAsBytes();
 
-      // Appel au service Gemini avec le nom de fonction corrigé
-      final List<String> result = await GeminiService.readHandwrittenPrescription(bytes);
+      // ✅ Appel corrigé — méthode présente dans GeminiService
+      final List<String> result =
+          await GeminiService.readHandwrittenPrescription(bytes);
 
       if (!mounted) return;
 
       setState(() {
-        _detectedMeds = result.map((name) => {
-          "name": name, 
-          "selected": true
-        }).toList();
+        _detectedMeds = result
+            .map((name) => {"name": name, "selected": true})
+            .toList();
         _isProcessing = false;
       });
 
@@ -77,7 +81,10 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
         _showResultsSheet();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Aucun médicament détecté. Essayez de mieux éclairer l'image.")),
+          const SnackBar(
+            content: Text(
+                "Aucun médicament détecté. Essayez de mieux éclairer l'image."),
+          ),
         );
       }
     } catch (e) {
@@ -104,10 +111,11 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (_isInitialized) 
+          if (_isInitialized)
             CameraPreview(_controller!)
-          else 
-            const Center(child: CircularProgressIndicator(color: Colors.green)),
+          else
+            const Center(
+                child: CircularProgressIndicator(color: Colors.green)),
 
           _buildSmartOverlay(),
 
@@ -131,8 +139,14 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
             right: 0,
             child: Column(
               children: [
-                const Text("Alignez l'ordonnance dans le cadre", 
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500, shadows: [Shadow(blurRadius: 10)])),
+                const Text(
+                  "Alignez l'ordonnance dans le cadre",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w500,
+                    shadows: [Shadow(blurRadius: 10)],
+                  ),
+                ),
                 const SizedBox(height: 20),
                 GestureDetector(
                   onTap: _scanImage,
@@ -145,10 +159,16 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                       border: Border.all(color: Colors.white, width: 4),
                     ),
                     child: Container(
-                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                      child: _isProcessing 
-                        ? const Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator(color: Colors.green, strokeWidth: 3))
-                        : const Icon(Icons.qr_code_scanner, size: 40, color: Colors.green),
+                      decoration: const BoxDecoration(
+                          color: Colors.white, shape: BoxShape.circle),
+                      child: _isProcessing
+                          ? const Padding(
+                              padding: EdgeInsets.all(20),
+                              child: CircularProgressIndicator(
+                                  color: Colors.green, strokeWidth: 3),
+                            )
+                          : const Icon(Icons.qr_code_scanner,
+                              size: 40, color: Colors.green),
                     ),
                   ),
                 ),
@@ -167,29 +187,35 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
     return Stack(
       children: [
         ColorFiltered(
-          colorFilter: ColorFilter.mode(Colors.black.withOpacity(0.5), BlendMode.srcOut),
+          colorFilter: ColorFilter.mode(
+              Colors.black.withOpacity(0.5), BlendMode.srcOut),
           child: Stack(
             children: [
-              Container(decoration: const BoxDecoration(color: Colors.black, backgroundBlendMode: BlendMode.dstOut)),
+              Container(
+                  decoration: const BoxDecoration(
+                      color: Colors.black,
+                      backgroundBlendMode: BlendMode.dstOut)),
               Align(
                 alignment: Alignment.center,
                 child: Container(
                   width: width,
                   height: height,
-                  decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(20)),
+                  decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(20)),
                 ),
               ),
             ],
           ),
         ),
-        // Bordures et trait de scan
         Align(
           alignment: Alignment.center,
           child: Container(
             width: width,
             height: height,
             decoration: BoxDecoration(
-              border: Border.all(color: Colors.green.withOpacity(0.5), width: 2),
+              border: Border.all(
+                  color: Colors.green.withOpacity(0.5), width: 2),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Stack(
@@ -204,8 +230,17 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                       child: Container(
                         height: 2,
                         decoration: BoxDecoration(
-                          boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.6), blurRadius: 10, spreadRadius: 2)],
-                          gradient: const LinearGradient(colors: [Colors.transparent, Colors.green, Colors.transparent]),
+                          boxShadow: [
+                            BoxShadow(
+                                color: Colors.green.withOpacity(0.6),
+                                blurRadius: 10,
+                                spreadRadius: 2)
+                          ],
+                          gradient: const LinearGradient(colors: [
+                            Colors.transparent,
+                            Colors.green,
+                            Colors.transparent
+                          ]),
                         ),
                       ),
                     );
@@ -235,20 +270,34 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)))),
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
               const SizedBox(height: 20),
-              const Text("Médicaments identifiés", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-              const Text("Désélectionnez si nécessaire", style: TextStyle(color: Colors.grey)),
+              const Text("Médicaments identifiés",
+                  style: TextStyle(
+                      fontSize: 22, fontWeight: FontWeight.bold)),
+              const Text("Désélectionnez si nécessaire",
+                  style: TextStyle(color: Colors.grey)),
               const SizedBox(height: 20),
               Expanded(
                 child: ListView.builder(
                   itemCount: _detectedMeds.length,
                   itemBuilder: (context, i) => CheckboxListTile(
                     activeColor: Colors.green,
-                    title: Text(_detectedMeds[i]['name'], style: const TextStyle(fontWeight: FontWeight.w600)),
+                    title: Text(_detectedMeds[i]['name'],
+                        style: const TextStyle(fontWeight: FontWeight.w600)),
                     value: _detectedMeds[i]['selected'],
-                    onChanged: (val) => setSheetState(() => _detectedMeds[i]['selected'] = val),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    onChanged: (val) =>
+                        setSheetState(() => _detectedMeds[i]['selected'] = val),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
                   ),
                 ),
               ),
@@ -258,28 +307,26 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                 height: 55,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green, 
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15))
+                    backgroundColor: Colors.green,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15)),
                   ),
                   onPressed: () {
-                    // Récupérer les médicaments sélectionnés
                     final selectedMedications = _detectedMeds
                         .where((med) => med['selected'] == true)
                         .map((med) => med['name'] as String)
                         .toList();
-                    
-                    // Ajouter à l'historique
+
                     for (var medName in selectedMedications) {
                       HistoryService.instance.add(medName, source: "Scanner IA");
                     }
-                    
-                    // Fermer la bottom sheet
+
                     Navigator.pop(context);
-                    
-                    // Retourner les médicaments à SearchScreen
                     Navigator.pop(context, selectedMedications);
                   },
-                  child: const Text("RECHERCHER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: const Text("RECHERCHER",
+                      style: TextStyle(
+                          color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],

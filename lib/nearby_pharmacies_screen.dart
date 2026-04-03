@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pharma/models/pharmacy.dart';
 import 'package:pharma/services/location_service.dart';
 import 'package:pharma/services/pharmacy_service.dart';
@@ -15,7 +16,7 @@ class NearbyPharmaciesScreen extends StatefulWidget {
 class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
   final PharmacyService _pharmacyService = PharmacyService();
   final LocationService _locationService = LocationService();
-  
+
   List<Pharmacy> _pharmacies = [];
   bool _isLoading = true;
   String? _error;
@@ -37,7 +38,8 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
       final location = await _locationService.tryGetCurrentPosition();
       if (location == null) {
         setState(() {
-          _error = "Impossible de récupérer votre localisation. Vérifiez vos paramètres GPS.";
+          _error =
+              "Impossible de récupérer votre localisation. Vérifiez vos paramètres GPS.";
           _isLoading = false;
         });
         return;
@@ -80,10 +82,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
   }
 
   Future<void> _makePhoneCall(String phoneNumber) async {
-    final Uri launchUri = Uri(
-      scheme: 'tel',
-      path: phoneNumber,
-    );
+    final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
     } else {
@@ -95,10 +94,32 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
     }
   }
 
+  Future<void> _openWhatsApp(String phoneNumber) async {
+    // Nettoyer le numéro (enlever espaces, tirets, parenthèses)
+    String cleanNumber = phoneNumber.replaceAll(RegExp(r'[\s\-\(\)]'), '');
+
+    // S'assurer que le numéro commence par le code pays (237 pour le Cameroun)
+    if (!cleanNumber.startsWith('237') && cleanNumber.length == 9) {
+      cleanNumber = '237$cleanNumber';
+    }
+
+    final Uri whatsappUri = Uri.parse('https://wa.me/$cleanNumber');
+
+    if (await canLaunchUrl(whatsappUri)) {
+      await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Impossible d\'ouvrir WhatsApp.')),
+        );
+      }
+    }
+  }
+
   Future<void> _openMap(Pharmacy pharmacy) async {
     final point = pharmacy.localisation;
     if (point == null) return;
-    
+
     final Uri url = Uri.parse(
       'https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}&travelmode=driving',
     );
@@ -161,9 +182,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
     }
 
     if (_pharmacies.isEmpty) {
-      return const Center(
-        child: Text('Aucune pharmacie trouvée à proximité.'),
-      );
+      return const Center(child: Text('Aucune pharmacie trouvée à proximité.'));
     }
 
     return ListView.builder(
@@ -183,7 +202,9 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
         return Card(
           elevation: 2,
           margin: const EdgeInsets.only(bottom: 16),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -191,7 +212,11 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.local_pharmacy, color: Colors.green, size: 28),
+                    const Icon(
+                      Icons.local_pharmacy,
+                      color: Colors.green,
+                      size: 28,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -205,29 +230,55 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                             ),
                           ),
                           if (distance != null)
-                            Text(
-                              'À ${_formatDistance(distance)}',
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 13,
+                            Container(
+                              margin: const EdgeInsets.only(top: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(
+                                    Icons.navigation,
+                                    size: 12,
+                                    color: Colors.green,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _formatDistance(distance),
+                                    style: const TextStyle(
+                                      color: Colors.green,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                         ],
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
-                        color: pharmacy.horaires == 'Ouvert' 
-                            ? Colors.green.withOpacity(0.1) 
+                        color: pharmacy.horaires == 'Ouvert'
+                            ? Colors.green.withOpacity(0.1)
                             : Colors.red.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
                         pharmacy.horaires ?? 'Horaires inconnus',
                         style: TextStyle(
-                          color: pharmacy.horaires == 'Ouvert' 
-                              ? Colors.green 
+                          color: pharmacy.horaires == 'Ouvert'
+                              ? Colors.green
                               : Colors.red,
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -239,12 +290,19 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    const Icon(Icons.location_on_outlined, size: 16, color: Colors.grey),
+                    const Icon(
+                      Icons.location_on_outlined,
+                      size: 16,
+                      color: Colors.grey,
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         pharmacy.adresse ?? 'Adresse non disponible',
-                        style: const TextStyle(color: Colors.grey, fontSize: 13),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   ],
@@ -253,11 +311,18 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      const Icon(Icons.phone_outlined, size: 16, color: Colors.grey),
+                      const Icon(
+                        Icons.phone_outlined,
+                        size: 16,
+                        color: Colors.grey,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         pharmacy.telephone!,
-                        style: const TextStyle(color: Colors.grey, fontSize: 13),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 13,
+                        ),
                       ),
                     ],
                   ),
@@ -265,10 +330,11 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
+                    // Bouton Itinéraire
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () => _openMap(pharmacy),
-                        icon: const Icon(Icons.directions),
+                        icon: const Icon(Icons.directions, size: 18),
                         label: const Text('Itinéraire'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.green,
@@ -276,25 +342,31 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
                           ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    if (pharmacy.telephone != null)
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _makePhoneCall(pharmacy.telephone!),
-                          icon: const Icon(Icons.call),
-                          label: const Text('Appeler'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                             shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
+                    
+                    // Icône WhatsApp
+                    if ((pharmacy.whatsapp ?? pharmacy.telephone) != null) ...[
+                      const SizedBox(width: 12),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.green.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.green, width: 1.5),
+                        ),
+                        child: IconButton(
+                          onPressed: () => _openWhatsApp(
+                            pharmacy.whatsapp ?? pharmacy.telephone!,
                           ),
-                          ),
+                          icon: const FaIcon(FontAwesomeIcons.whatsapp),
+                          color: Colors.green,
+                          iconSize: 24,
+                          tooltip: 'WhatsApp',
                         ),
                       ),
+                    ],
                   ],
                 ),
               ],
