@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import '../theme.dart';
+import '../models/pharmacy.dart';
+import '../services/firestore_service.dart';
 
 class AddPharmacyScreen extends StatefulWidget {
   @override
@@ -12,9 +14,13 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
   GoogleMapController? _mapController;
   LatLng _currentPosition = LatLng(3.848, 11.502); // Position par défaut (Yaoundé)
   bool _loading = true;
+  bool _isSaving = false;
 
+  final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _whatsappController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _addressController = TextEditingController();
 
   @override
   void initState() {
@@ -47,7 +53,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       // 1. UTILISATION DU BOUTON FLOTTANT
-      floatingActionButton: _loading
+      floatingActionButton: _loading || _isSaving
           ? null
           : FloatingActionButton.extended(
         onPressed: () => _showRegistrationSheet(context),
@@ -70,6 +76,9 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
             padding: EdgeInsets.only(top: 140),
+            onCameraMove: (position) {
+              _currentPosition = position.target;
+            },
             markers: {
               Marker(
                 markerId: MarkerId("selected_pharma"),
@@ -84,6 +93,11 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
             top: 0, left: 0, right: 0,
             child: _buildHeader(),
           ),
+          if (_isSaving)
+            Container(
+              color: Colors.black26,
+              child: Center(child: CircularProgressIndicator(color: PharmaTheme.emeraldGreen)),
+            ),
         ],
       ),
     );
@@ -105,39 +119,54 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 45, height: 5,
-                margin: EdgeInsets.only(bottom: 25),
-                decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
-              ),
-              Row(
-                children: [
-                  Icon(Icons.edit_note_rounded, color: PharmaTheme.emeraldGreen, size: 28),
-                  SizedBox(width: 10),
-                  Text("Informations",
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF263238))
-                  ),
-                ],
-              ),
-              SizedBox(height: 20),
-              _buildModernField(
-                controller: _nameController,
-                hint: "Nom de l'officine",
-                icon: Icons.local_pharmacy_outlined,
-              ),
-              SizedBox(height: 15),
-              _buildModernField(
-                controller: _whatsappController,
-                hint: "Contact WhatsApp Business",
-                icon: Icons.chat_bubble_outline_rounded,
-                keyboardType: TextInputType.phone,
-              ),
-              SizedBox(height: 25),
-              _buildConfirmButton(context),
-            ],
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 45, height: 5,
+                  margin: EdgeInsets.only(bottom: 25),
+                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
+                ),
+                Row(
+                  children: [
+                    Icon(Icons.edit_note_rounded, color: PharmaTheme.emeraldGreen, size: 28),
+                    SizedBox(width: 10),
+                    Text("Informations de la Pharmacie",
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF263238))
+                    ),
+                  ],
+                ),
+                SizedBox(height: 20),
+                _buildModernField(
+                  controller: _nameController,
+                  hint: "Nom de l'officine",
+                  icon: Icons.local_pharmacy_outlined,
+                ),
+                SizedBox(height: 15),
+                _buildModernField(
+                  controller: _addressController,
+                  hint: "Adresse physique",
+                  icon: Icons.location_on_outlined,
+                ),
+                SizedBox(height: 15),
+                _buildModernField(
+                  controller: _phoneController,
+                  hint: "Numéro de téléphone",
+                  icon: Icons.phone_outlined,
+                  keyboardType: TextInputType.phone,
+                ),
+                SizedBox(height: 15),
+                _buildModernField(
+                  controller: _whatsappController,
+                  hint: "Contact WhatsApp (ex: 2376XXXXXXXX)",
+                  icon: Icons.chat_bubble_outline_rounded,
+                  keyboardType: TextInputType.phone,
+                ),
+                SizedBox(height: 25),
+                _buildConfirmButton(context),
+              ],
+            ),
           ),
         ),
       ),
@@ -170,7 +199,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
                 children: [
                   Text("Enregistrer ma Pharmacie",
                       style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text("Ma position est détectée par GPS",
+                  Text("Placez le marqueur sur la carte",
                       style: TextStyle(color: Colors.white70, fontSize: 12)),
                 ],
               ),
@@ -195,7 +224,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
           borderRadius: BorderRadius.circular(18),
         ),
         child: Center(
-          child: Text("CONFIRMER L'EMPLACEMENT",
+          child: Text("CONFIRMER ET ENREGISTRER",
               style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.1)),
         ),
       ),
@@ -216,20 +245,62 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
     );
   }
 
-  void _confirmRegistration() {
-    if (_nameController.text.isEmpty || _whatsappController.text.isEmpty) {
+  Future<void> _confirmRegistration() async {
+    if (_nameController.text.isEmpty || _whatsappController.text.isEmpty || _phoneController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Champs vides !"), backgroundColor: Colors.redAccent)
+          SnackBar(content: Text("Veuillez remplir les champs obligatoires !"), backgroundColor: Colors.redAccent)
       );
       return;
     }
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Icon(Icons.verified, color: Colors.green, size: 50),
-        content: Text("Enregistrement envoyé avec succès !", textAlign: TextAlign.center),
-      ),
-    );
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final pharmacy = Pharmacy(
+        id: "", // Sera généré par Firestore
+        name: _nameController.text.trim(),
+        address: _addressController.text.trim(),
+        latitude: _currentPosition.latitude,
+        longitude: _currentPosition.longitude,
+        telephone: _phoneController.text.trim(),
+        whatsapp: _whatsappController.text.trim(),
+        isActive: true,
+      );
+
+      await _firestoreService.savePharmacy(pharmacy);
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Icon(Icons.verified, color: Colors.green, size: 50),
+          content: Text("Pharmacie enregistrée avec succès dans la base de données !", textAlign: TextAlign.center),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Ferme le dialogue
+                Navigator.pop(context); // Retourne à l'écran précédent
+              },
+              child: Text("OK"),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Erreur lors de l'enregistrement : $e"), backgroundColor: Colors.redAccent)
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
   }
 }
