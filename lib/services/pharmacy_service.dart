@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math'; // Nécessaire pour le calcul de distance (sqrt, asin)
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'package:pharma/models/pharmacy.dart';
 
@@ -111,7 +112,7 @@ class PharmacyService {
   }) async {
     // Requête Overpass QL pour OpenStreetMap
     final String query = '''
-      [out:json][timeout:25];
+      [out:json][timeout:30];
       (
         node["amenity"="pharmacy"](around:$radius,$latitude,$longitude);
         way["amenity"="pharmacy"](around:$radius,$latitude,$longitude);
@@ -119,12 +120,25 @@ class PharmacyService {
       out body center;
     ''';
 
-    final String url = 'https://overpass-api.de/api/interpreter?data=${Uri.encodeComponent(query)}';
+    final String url = 'https://overpass-api.de/api/interpreter';
 
     print('DEBUG: Appel API OpenStreetMap...');
 
     try {
-      final response = await http.get(Uri.parse(url));
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'User-Agent': 'PharmaApp/1.0 (Flutter; Android)',
+        },
+        body: 'data=${Uri.encodeComponent(query)}',
+      ).timeout(
+        const Duration(seconds: 40),
+        onTimeout: () {
+          throw Exception('Timeout API Overpass - La requête a dépassé 40 secondes');
+        },
+      );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -167,26 +181,28 @@ class PharmacyService {
           final element = item['element'];
           final tags = element['tags'] as Map<String, dynamic>?;
           
-          String name = tags?['name'] ?? 'Pharmacie';
+          final name = tags?['name'] ?? 'Pharmacie';
           
           // Construction de l'adresse
-          String street = tags?['addr:street'] ?? '';
-          String city = tags?['addr:city'] ?? '';
-          String address = street.isNotEmpty ? '$street, $city' : 'Adresse non disponible';
+          final street = tags?['addr:street'] ?? '';
+          final city = tags?['addr:city'] ?? '';
+          final address = street.isNotEmpty ? '$street, $city' : 'Adresse non disponible';
           
           // OpenStreetMap fournit rarement le téléphone
-          String? phone = tags?['phone'] ?? tags?['contact:phone'];
+          final phone = tags?['phone'] ?? tags?['contact:phone'];
 
-          pharmacies.add(Pharmacy(
-            id: element['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-            nom: name,
-            adresse: address,
-            telephone: phone,
-            whatsapp: null,
-            localisation: GeoLocationPoint(latitude: item['lat'], longitude: item['lon']),
-            horaires: tags?['opening_hours'] ?? 'Horaires inconnus',
-            medicaments: [], // Liste vide car OSM n'a pas cette info
-          ));
+          pharmacies.add(
+            Pharmacy(
+              id: element['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
+              nom: name,
+              adresse: address,
+              telephone: phone,
+              whatsapp: null,
+              localisation: GeoLocationPoint(latitude: item['lat'] as double, longitude: item['lon'] as double),
+              horaires: tags?['opening_hours'] ?? 'Horaires inconnus',
+              medicaments: [],
+            ),
+          );
         }
 
         return pharmacies;

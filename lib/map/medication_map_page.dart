@@ -16,7 +16,7 @@ class MedicationMapPage extends StatefulWidget {
   });
 
   final MedicationCatalogEntry entry;
-  final GeoPoint? initialUserLocation;
+  final dynamic initialUserLocation;
 
   @override
   State<MedicationMapPage> createState() => _MedicationMapPageState();
@@ -28,10 +28,10 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
   final LocationService _locationService = LocationService();
   final MapController _mapController = MapController();
 
-  GeoPoint? _userLocation;
+  dynamic _userLocation;
   bool _loadingLocation = false;
   bool _mapReady = false;
-  StreamSubscription<GeoPoint>? _positionSubscription;
+  StreamSubscription<dynamic>? _positionSubscription;
 
   @override
   void initState() {
@@ -98,9 +98,9 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
   LatLng _defaultCenter() => const LatLng(3.8667, 11.5167); // Yaoundé
 
   LatLng? _preferredCenter() {
-    final GeoPoint? location = _userLocation;
+    final dynamic location = _userLocation;
     if (location != null) {
-      return LatLng(location.latitude, location.longitude);
+      return LatLng(location.latitude as double, location.longitude as double);
     }
     final availabilities = _availabilitiesWithinRadius();
     if (availabilities.isNotEmpty) {
@@ -126,7 +126,7 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
   }
 
   List<MedicationAvailability> _availabilitiesWithinRadius() {
-    final GeoPoint? location = _userLocation;
+    final dynamic location = _userLocation;
     if (location == null) {
       return List<MedicationAvailability>.from(widget.entry.availabilities);
     }
@@ -138,8 +138,8 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
         return false;
       }
       final double distance = GeoUtils.haversineDistance(
-        startLat: location.latitude,
-        startLng: location.longitude,
+        startLat: location.latitude as double,
+        startLng: location.longitude as double,
         endLat: point.latitude,
         endLng: point.longitude,
       );
@@ -152,16 +152,16 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
       final double distanceA = pointA == null
           ? double.infinity
           : GeoUtils.haversineDistance(
-              startLat: location.latitude,
-              startLng: location.longitude,
+              startLat: location.latitude as double,
+              startLng: location.longitude as double,
               endLat: pointA.latitude,
               endLng: pointA.longitude,
             );
       final double distanceB = pointB == null
           ? double.infinity
           : GeoUtils.haversineDistance(
-              startLat: location.latitude,
-              startLng: location.longitude,
+              startLat: location.latitude as double,
+              startLng: location.longitude as double,
               endLat: pointB.latitude,
               endLng: pointB.longitude,
             );
@@ -183,7 +183,7 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
   }
 
   String _distanceLabel(Pharmacy pharmacy) {
-    final GeoPoint? location = _userLocation;
+    final dynamic location = _userLocation;
     if (location == null) {
       return 'Distance inconnue';
     }
@@ -192,8 +192,8 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
       return 'Distance inconnue';
     }
     final double distance = GeoUtils.haversineDistance(
-      startLat: location.latitude,
-      startLng: location.longitude,
+      startLat: location.latitude as double,
+      startLng: location.longitude as double,
       endLat: point.latitude,
       endLng: point.longitude,
     );
@@ -207,11 +207,12 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
     final List<Marker> markers = [];
 
     if (_userLocation != null) {
+      final dynamic loc = _userLocation;
       markers.add(
         Marker(
           width: 60,
           height: 60,
-          point: LatLng(_userLocation!.latitude, _userLocation!.longitude),
+          point: LatLng(loc.latitude as double, loc.longitude as double),
           child: const Icon(
             Icons.my_location,
             color: Colors.blueAccent,
@@ -316,8 +317,8 @@ class _MedicationMapPageState extends State<MedicationMapPage> {
                     circles: [
                       CircleMarker(
                         point: LatLng(
-                          _userLocation!.latitude,
-                          _userLocation!.longitude,
+                          (_userLocation as dynamic).latitude as double,
+                          (_userLocation as dynamic).longitude as double,
                         ),
                         color: Colors.blue.withOpacity(0.15),
                         borderColor: Colors.blueAccent.withOpacity(0.6),

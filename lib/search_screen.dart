@@ -41,7 +41,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   bool _loadingLocation = true;
   bool _isSearching = false;
   bool _locationUnavailable = false;
-  GeoPoint? _userLocation;
+  dynamic _userLocation;
 
   @override
   void initState() {
@@ -329,7 +329,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     if (_userLocation == null) {
       return availabilities;
     }
-    final GeoPoint location = _userLocation!;
+    final dynamic location = _userLocation;
     final List<MedicationAvailability> filtered = availabilities
         .where((availability) {
       final point = availability.pharmacy.localisation;

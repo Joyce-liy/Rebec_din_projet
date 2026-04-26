@@ -1,0 +1,98 @@
+{
+  "project_info": {
+    "project_number": "665503474790",
+    "project_id": "pharmconnect-cd6f1",
+    "storage_bucket": "pharmconnect-cd6f1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:665503474790:android:cd2798ba3aa35e02b0b9a7",
+        "android_client_info": {
+          "package_name": "com.example.pharm_admin.pharm_admin"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "665503474790-h40n1go546u57p1sd6j7bdk6nspgcima.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pharm_admin.pharm_admin",
+            "certificate_hash": "f1c1943f43057176db02ee15e1435b54801ada18"
+          }
+        },
+        {
+          "client_id": "665503474790-kofck4ggf7r8emvg2ro2hp5a5ltrmn6u.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBoAfyW_16oxifrMmmBrejru4ym-xDMP-s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "665503474790-kofck4ggf7r8emvg2ro2hp5a5ltrmn6u.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "665503474790-rgib03i2vmmpfq6fas1b2ags1vhrgr7v.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pharma"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:665503474790:android:537a29b6549fe7c7b0b9a7",
+        "android_client_info": {
+          "package_name": "com.example.pharma"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "665503474790-4i370voteiamfvf1img5f0feg14b5n68.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.pharma",
+            "certificate_hash": "f1c1943f43057176db02ee15e1435b54801ada18"
+          }
+        },
+        {
+          "client_id": "665503474790-kofck4ggf7r8emvg2ro2hp5a5ltrmn6u.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBoAfyW_16oxifrMmmBrejru4ym-xDMP-s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "665503474790-kofck4ggf7r8emvg2ro2hp5a5ltrmn6u.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "665503474790-rgib03i2vmmpfq6fas1b2ags1vhrgr7v.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.pharma"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

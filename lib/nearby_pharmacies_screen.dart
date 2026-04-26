@@ -20,7 +20,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
   List<Pharmacy> _pharmacies = [];
   bool _isLoading = true;
   String? _error;
-  GeoPoint? _userLocation;
+  dynamic _userLocation;
 
   @override
   void initState() {
@@ -34,54 +34,52 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
       _error = null;
     });
 
-    try {
-      final location = await _locationService.tryGetCurrentPosition();
-      if (location == null) {
+      try {
+        final location = await _locationService.tryGetCurrentPosition();
+        if (location == null) {
+          setState(() {
+            _error =
+                "Impossible de récupérer votre localisation. Vérifiez vos paramètres GPS.";
+            _isLoading = false;
+          });
+          return;
+        }
+
+        _userLocation = location;
+
+        final pharmacies = await _pharmacyService.fetchNearbyPharmacies(
+          latitude: (location as dynamic).latitude as double,
+          longitude: (location as dynamic).longitude as double,
+        );
+
+        // Tri local par distance pour garantir "les plus proches"
+        pharmacies.sort((a, b) {
+          final distA = GeoUtils.haversineDistance(
+            startLat: (location as dynamic).latitude as double,
+            startLng: (location as dynamic).longitude as double,
+            endLat: a.localisation!.latitude,
+            endLng: a.localisation!.longitude,
+          );
+          final distB = GeoUtils.haversineDistance(
+            startLat: (location as dynamic).latitude as double,
+            startLng: (location as dynamic).longitude as double,
+            endLat: b.localisation!.latitude,
+            endLng: b.localisation!.longitude,
+          );
+          return distA.compareTo(distB);
+        });
+
         setState(() {
-          _error =
-              "Impossible de récupérer votre localisation. Vérifiez vos paramètres GPS.";
+          _pharmacies = pharmacies;
           _isLoading = false;
         });
-        return;
+      } catch (e) {
+        setState(() {
+          _error = "Erreur lors de la récupération des pharmacies: $e";
+          _isLoading = false;
+        });
       }
-
-      _userLocation = location;
-
-      final pharmacies = await _pharmacyService.fetchNearbyPharmacies(
-        latitude: location.latitude,
-        longitude: location.longitude,
-      );
-
-      // Tri local par distance pour garantir "les plus proches"
-      pharmacies.sort((a, b) {
-        final distA = GeoUtils.haversineDistance(
-          startLat: location.latitude,
-          startLng: location.longitude,
-          endLat: a.localisation!.latitude,
-          endLng: a.localisation!.longitude,
-        );
-        final distB = GeoUtils.haversineDistance(
-          startLat: location.latitude,
-          startLng: location.longitude,
-          endLat: b.localisation!.latitude,
-          endLng: b.localisation!.longitude,
-        );
-        return distA.compareTo(distB);
-      });
-
-      setState(() {
-        _pharmacies = pharmacies;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() {
-        _error = "Erreur lors de la récupération des pharmacies: $e";
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _makePhoneCall(String phoneNumber) async {
+    }  Future<void> _makePhoneCall(String phoneNumber) async {
     final Uri launchUri = Uri(scheme: 'tel', path: phoneNumber);
     if (await canLaunchUrl(launchUri)) {
       await launchUrl(launchUri);
@@ -192,8 +190,8 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
         final pharmacy = _pharmacies[index];
         final distance = _userLocation != null && pharmacy.localisation != null
             ? GeoUtils.haversineDistance(
-                startLat: _userLocation!.latitude,
-                startLng: _userLocation!.longitude,
+                startLat: (_userLocation as dynamic).latitude as double,
+                startLng: (_userLocation as dynamic).longitude as double,
                 endLat: pharmacy.localisation!.latitude,
                 endLng: pharmacy.localisation!.longitude,
               )
