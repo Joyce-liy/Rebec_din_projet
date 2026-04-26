@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import crucial
 import '../theme.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -8,6 +9,31 @@ class SignupScreen extends StatefulWidget {
 
 class _SignupScreenState extends State<SignupScreen> {
   bool _isObscure = true;
+  
+  // 1. Contrôleurs pour les champs
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _licenseController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // 2. Fonction d'inscription Firebase
+  Future<void> _register() async {
+    try {
+      UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      // Mettre à jour le displayName
+      await userCredential.user?.updateDisplayName(_nameController.text.trim());
+      // Succès : naviguer vers le hub ou dashboard
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Inscription réussie !")));
+      Navigator.pop(context); 
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Erreur: ${e.message}")));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,117 +42,31 @@ class _SignupScreenState extends State<SignupScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- HEADER AVEC DÉGRADÉ ---
-            Stack(
-              children: [
-                Container(
-                  height: 200,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [PharmaTheme.emeraldGreen, Color(0xFF004D40)],
-                    ),
-                    borderRadius: BorderRadius.vertical(bottom: Radius.circular(40)),
-                  ),
-                ),
-                SafeArea(
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          IconButton(
-                            icon: Icon(Icons.arrow_back_ios_new, color: Colors.white),
-                            onPressed: () => Navigator.pop(context),
-                          ),
-                        ],
-                      ),
-                      Text(
-                        "Créer un Compte",
-                        style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold),
-                      ),
-                      SizedBox(height: 10),
-                      Text(
-                        "Rejoignez le réseau des pharmaciens",
-                        style: TextStyle(color: Colors.white70, fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-
+            // ... (Gardez votre Header actuel)
+            
             Padding(
               padding: const EdgeInsets.all(30.0),
               child: Column(
                 children: [
-                  // --- CHAMPS DE SAISIE ---
-                  _buildSignupField(
-                    label: "Nom Complet",
-                    hint: "Dr. Moussa Traoré",
-                    icon: Icons.person_outline,
-                  ),
+                  _buildSignupField(label: "Nom Complet", hint: "Dr. Moussa Traoré", icon: Icons.person_outline, controller: _nameController),
                   SizedBox(height: 20),
-
-                  _buildSignupField(
-                    label: "Email Professionnel",
-                    hint: "moussa@pharmacie.com",
-                    icon: Icons.email_outlined,
-                    keyboardType: TextInputType.emailAddress,
-                  ),
+                  _buildSignupField(label: "Email Professionnel", hint: "moussa@pharmacie.com", icon: Icons.email_outlined, controller: _emailController, keyboardType: TextInputType.emailAddress),
                   SizedBox(height: 20),
-
-                  _buildSignupField(
-                    label: "Numéro de Licence / Ordre",
-                    hint: "CNOP-12345",
-                    icon: Icons.badge_outlined,
-                  ),
+                  _buildSignupField(label: "Numéro de Licence", hint: "CNOP-12345", icon: Icons.badge_outlined, controller: _licenseController),
                   SizedBox(height: 20),
-
-                  _buildSignupField(
-                    label: "Mot de passe",
-                    hint: "••••••••",
-                    icon: Icons.lock_outline,
-                    isPassword: true,
-                  ),
-
+                  _buildSignupField(label: "Mot de passe", hint: "••••••••", icon: Icons.lock_outline, isPassword: true, controller: _passwordController),
+                  
                   SizedBox(height: 35),
 
                   // --- BOUTON S'INSCRIRE ---
                   Container(
                     width: double.infinity,
                     height: 58,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(colors: [PharmaTheme.emeraldGreen, Color(0xFF00695C)]),
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(color: PharmaTheme.emeraldGreen.withOpacity(0.3), blurRadius: 10, offset: Offset(0, 5))
-                      ],
-                    ),
                     child: ElevatedButton(
-                      onPressed: () {
-                        // Logique d'inscription
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.transparent,
-                        shadowColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                      ),
-                      child: Text("S'INSCRIRE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      onPressed: _register, // Appel de la fonction Firebase
+                      style: ElevatedButton.styleFrom(backgroundColor: PharmaTheme.emeraldGreen),
+                      child: Text("S'INSCRIRE", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     ),
-                  ),
-
-                  SizedBox(height: 25),
-
-                  // --- LIEN VERS CONNEXION ---
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text("Déjà inscrit ?"),
-                      TextButton(
-                        onPressed: () => Navigator.pop(context), // Retour au login
-                        child: Text("Se connecter",
-                            style: TextStyle(color: PharmaTheme.emeraldGreen, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
                   ),
                 ],
               ),
@@ -137,11 +77,12 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  // Widget réutilisable pour les champs
+  // Mise à jour de la méthode pour accepter le controller
   Widget _buildSignupField({
     required String label,
     required String hint,
     required IconData icon,
+    required TextEditingController controller, // Ajout
     bool isPassword = false,
     TextInputType keyboardType = TextInputType.text
   }) {
@@ -151,26 +92,13 @@ class _SignupScreenState extends State<SignupScreen> {
         Text(label, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey[800], fontSize: 13)),
         SizedBox(height: 8),
         TextField(
+          controller: controller, // Liaison
           obscureText: isPassword ? _isObscure : false,
           keyboardType: keyboardType,
           decoration: InputDecoration(
             prefixIcon: Icon(icon, color: PharmaTheme.emeraldGreen, size: 22),
-            suffixIcon: isPassword
-                ? IconButton(
-              icon: Icon(_isObscure ? Icons.visibility_off : Icons.visibility),
-              onPressed: () => setState(() => _isObscure = !_isObscure),
-            )
-                : null,
             hintText: hint,
-            hintStyle: TextStyle(color: Colors.grey[400], fontSize: 14),
-            filled: true,
-            fillColor: Color(0xFFF8F9FA),
-            contentPadding: EdgeInsets.symmetric(vertical: 18),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(15),
-              borderSide: BorderSide(color: Colors.grey[100]!, width: 1),
-            ),
+            // ... (votre style actuel)
           ),
         ),
       ],

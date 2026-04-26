@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:pharm_admin/screens/signup_screen.dart';
 import '../theme.dart';
 import 'pharmacist_hub_screen.dart';
@@ -11,6 +13,62 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _isObscure = true;
 
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  // Fonction connexion Email/Password
+  Future<void> _login() async {
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => PharmacistHubScreen()),
+      );
+    } on FirebaseAuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message ?? "Erreur de connexion")),
+      );
+    }
+  }
+
+  // Fonction connexion Google - LOGIQUE AJOUTÉE
+  Future<void> _signInWithGoogle() async {
+    try {
+      // 1. Connexion Google
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+      if (googleUser == null) return; // Utilisateur a annulé
+
+      // 2. Récupération des tokens
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      // 3. Création du credential Firebase
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // 4. Connexion Firebase
+      await _auth.signInWithCredential(credential);
+
+      // 5. Redirection
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => PharmacistHubScreen()),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Erreur Google : $e")));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -18,23 +76,35 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // --- HEADER DESIGN ---
+            // Header
             Container(
               height: 250,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [PharmaTheme.emeraldGreen, Color(0xFF004D40)],
                 ),
-                borderRadius: BorderRadius.vertical(bottom: Radius.circular(50)),
+                borderRadius: BorderRadius.vertical(
+                  bottom: Radius.circular(50),
+                ),
               ),
               child: Center(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.lock_person_rounded, size: 80, color: Colors.white),
+                    Icon(
+                      Icons.lock_person_rounded,
+                      size: 80,
+                      color: Colors.white,
+                    ),
                     SizedBox(height: 10),
-                    Text("Connexion Admin",
-                        style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                    Text(
+                      "Connexion Admin",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -45,99 +115,120 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- CHAMPS DE SAISIE ---
-                  _buildLabel("Nom d'utilisateur"),
-                  _buildTextField(hint: "Ex: Dr. Diallo", icon: Icons.person_outline),
-
+                  _buildLabel("Email Professionnel"),
+                  _buildTextField(
+                    hint: "Ex: docteur@pharmacie.com",
+                    icon: Icons.email_outlined,
+                    controller: _emailController,
+                  ),
                   SizedBox(height: 20),
-
                   _buildLabel("Mot de passe"),
                   _buildTextField(
                     hint: "••••••••",
                     icon: Icons.lock_outline,
                     isPassword: true,
-                  ),
-
-                  // --- MOT DE PASSE OUBLIÉ ---
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () {},
-                      child: Text("Mot de passe oublié ?",
-                          style: TextStyle(color: PharmaTheme.emeraldGreen, fontWeight: FontWeight.bold)),
-                    ),
+                    controller: _passwordController,
                   ),
 
                   SizedBox(height: 20),
 
-                  // --- BOUTON CONFIRMER ---
+                  // Bouton Confirmer
                   SizedBox(
                     width: double.infinity,
                     height: 55,
                     child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => PharmacistHubScreen()));
-                      },
+                      onPressed: _login,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: PharmaTheme.emeraldGreen,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
                       ),
-                      child: Text("CONFIRMER", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                      child: Text(
+                        "CONFIRMER",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
 
                   SizedBox(height: 30),
 
-                  // --- SÉPARATEUR OU ---
+                  // Séparateur OU
                   Row(
                     children: [
                       Expanded(child: Divider()),
                       Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 10),
-                        child: Text("OU", style: TextStyle(color: Colors.grey)),
+                        padding: EdgeInsets.symmetric(horizontal: 10),
+                        child: Text("OU"),
                       ),
                       Expanded(child: Divider()),
                     ],
                   ),
 
-                  SizedBox(height: 30),
+                  SizedBox(height: 20),
 
-                  // --- BOUTON GOOGLE ---
+                  // Bouton Google
                   OutlinedButton(
-                    onPressed: () {
-                      // Ici la logique Google Sign-In
-                    },
+                    onPressed: _signInWithGoogle,
                     style: OutlinedButton.styleFrom(
                       minimumSize: Size(double.infinity, 55),
-                      side: BorderSide(color: Colors.grey[300]!),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Image.network('https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_\"G\"_logo.svg/1200px-Google_\"G\"_logo.svg.png', height: 24),
-                        SizedBox(width: 15),
-                        Text("Continuer avec Google", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600)),
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white,
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: Center(
+                            child: Text(
+                              'G',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blue,
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          "Continuer avec Google",
+                          style: TextStyle(color: Colors.black87),
+                        ),
                       ],
                     ),
                   ),
 
-                  SizedBox(height: 30),
-
-                  // --- CRÉER UN COMPTE ---
+                  // Lien Inscription
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text("Nouveau pharmacien ?"),
                       TextButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (context) => SignupScreen()),
-                          );
-                        },
-                        child: Text("Créer un compte",
-                            style: TextStyle(color: PharmaTheme.emeraldGreen, fontWeight: FontWeight.bold)),
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SignupScreen(),
+                          ),
+                        ),
+                        child: Text(
+                          "Créer un compte",
+                          style: TextStyle(
+                            color: PharmaTheme.emeraldGreen,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -150,30 +241,45 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Widget pour les labels
   Widget _buildLabel(String text) {
     return Padding(
       padding: const EdgeInsets.only(left: 5, bottom: 8),
-      child: Text(text, style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey[800])),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: Colors.blueGrey[800],
+        ),
+      ),
     );
   }
 
-  // Widget pour les champs textes
-  Widget _buildTextField({required String hint, required IconData icon, bool isPassword = false}) {
+  Widget _buildTextField({
+    required String hint,
+    required IconData icon,
+    bool isPassword = false,
+    required TextEditingController controller,
+  }) {
     return TextField(
+      controller: controller,
       obscureText: isPassword ? _isObscure : false,
       decoration: InputDecoration(
         prefixIcon: Icon(icon, color: PharmaTheme.emeraldGreen),
         suffixIcon: isPassword
             ? IconButton(
-          icon: Icon(_isObscure ? Icons.visibility_off : Icons.visibility),
-          onPressed: () => setState(() => _isObscure = !_isObscure),
-        )
+                icon: Icon(
+                  _isObscure ? Icons.visibility_off : Icons.visibility,
+                ),
+                onPressed: () => setState(() => _isObscure = !_isObscure),
+              )
             : null,
         hintText: hint,
         filled: true,
         fillColor: Color(0xFFF5F7F9),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(15),
+          borderSide: BorderSide.none,
+        ),
       ),
     );
   }

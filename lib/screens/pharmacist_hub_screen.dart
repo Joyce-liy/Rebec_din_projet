@@ -1,14 +1,68 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../theme.dart';
 import 'add_pharmacy_screen.dart';
 import 'subscription_screen.dart';
 import 'create_ad_screen.dart';
 import 'settings_screen.dart';
 import 'statistique_screen.dart';
+import 'welcome_screen.dart';
 
-
-class PharmacistHubScreen extends StatelessWidget {
+class PharmacistHubScreen extends StatefulWidget {
   const PharmacistHubScreen({super.key});
+
+  @override
+  _PharmacistHubScreenState createState() => _PharmacistHubScreenState();
+}
+
+class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
+  User? _currentUser;
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
+
+  @override
+  void initState() {
+    super.initState();
+    _currentUser = FirebaseAuth.instance.currentUser;
+  }
+
+  Future<void> _logout() async {
+    await FirebaseAuth.instance.signOut();
+    await _googleSignIn.signOut();
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => WelcomeScreen()),
+    );
+  }
+
+  Future<void> _confirmLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('Se déconnecter'),
+          content: Text('Voulez-vous vraiment vous déconnecter ?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: Text('Non'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: PharmaTheme.emeraldGreen,
+              ),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: Text('Oui'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLogout == true) {
+      await _logout();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,7 +74,7 @@ class PharmacistHubScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildHeader(context),
+              _buildHeader(),
 
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -104,7 +158,9 @@ class PharmacistHubScreen extends StatelessWidget {
                         // NAVIGATION VERS SETTINGS
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (context) => const SettingsScreen()),
+                          MaterialPageRoute(
+                            builder: (context) => const SettingsScreen(),
+                          ),
                         );
                       },
                     ),
@@ -155,9 +211,17 @@ class PharmacistHubScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 GestureDetector(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => AddPharmacyScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AddPharmacyScreen(),
+                    ),
+                  ),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10),
@@ -181,7 +245,8 @@ class PharmacistHubScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildHeader() {
+    String userName = _currentUser?.displayName ?? "Utilisateur";
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
       child: Row(
@@ -192,22 +257,59 @@ class PharmacistHubScreen extends StatelessWidget {
             child: Icon(Icons.person_rounded, color: PharmaTheme.emeraldGreen),
           ),
           const SizedBox(width: 12),
-          const Text(
-            "Dr. MOUTENG",
-            style: TextStyle(fontSize: 19, fontWeight: FontWeight.w800, color: Color(0xFF2D3436)),
+          Expanded(
+            child: Text(
+              userName,
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF2D3436),
+              ),
+              softWrap: true,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           const Spacer(),
-          const Icon(Icons.notifications_none_rounded, size: 26, color: Color(0xFF2D3436)),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: Icon(
+                  Icons.notifications_none_rounded,
+                  size: 26,
+                  color: Color(0xFF2D3436),
+                ),
+                onPressed: () {
+                  // Action pour les notifications
+                },
+              ),
+              IconButton(
+                icon: Icon(Icons.logout, size: 26, color: Color(0xFF2D3436)),
+                onPressed: _confirmLogout,
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildActionCard(BuildContext context, String title, String subtitle, IconData icon, Color color, Widget? target) {
+  Widget _buildActionCard(
+    BuildContext context,
+    String title,
+    String subtitle,
+    IconData icon,
+    Color color,
+    Widget? target,
+  ) {
     return GestureDetector(
       onTap: () {
         if (target != null) {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => target));
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => target),
+          );
         }
       },
       child: Container(
@@ -215,7 +317,11 @@ class PharmacistHubScreen extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(22),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4)),
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
           ],
         ),
         child: Column(
@@ -223,15 +329,26 @@ class PharmacistHubScreen extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 28),
             const SizedBox(height: 10),
-            Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-            Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+            Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            ),
+            Text(
+              subtitle,
+              style: const TextStyle(color: Colors.grey, fontSize: 11),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildOptionTile(IconData icon, String title, String subtitle, {VoidCallback? onTap}) {
+  Widget _buildOptionTile(
+    IconData icon,
+    String title,
+    String subtitle, {
+    VoidCallback? onTap,
+  }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -241,11 +358,13 @@ class PharmacistHubScreen extends StatelessWidget {
       child: ListTile(
         onTap: onTap,
         leading: Icon(icon, color: Colors.blueGrey, size: 22),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        title: Text(
+          title,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+        ),
         subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
         trailing: const Icon(Icons.chevron_right_rounded, size: 18),
       ),
     );
   }
 }
-
