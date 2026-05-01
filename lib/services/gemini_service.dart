@@ -6,7 +6,7 @@ import 'dart:typed_data';
 class GeminiService {
   static const String _baseUrl =
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-  static const Duration _timeout = Duration(seconds: 20);
+  static const Duration _timeout = Duration(seconds: 30);
 
   final String? _apiKey;
 
@@ -194,7 +194,7 @@ Ton : chaleureux, jamais condescendant, maximum 2-3 phrases. Français uniquemen
     }
 
     final contextInfo = (context?.isNotEmpty ?? false)
-        ? "\nContexte de la conversation :\n$context"
+        ? "\n\nHistorique de la conversation :\n$context"
         : "";
 
     try {
@@ -202,19 +202,22 @@ Ton : chaleureux, jamais condescendant, maximum 2-3 phrases. Français uniquemen
         systemPrompt: """Tu es REBEC-DIN, pharmacien expert à Yaoundé, Cameroun.
 Tu as 15 ans d'expérience en pharmacie clinique et conseils aux patients.
 
-Pour chaque médicament, structure ta réponse ainsi :
-1. Indication principale (à quoi ça sert en 1 phrase simple)
-2. Conseil clé de prise (à jeun ? avec repas gras ? beaucoup d'eau ?) — surtout pour les antipaludiques
-3. Précautions et contre-indications principales
-4. Pourquoi terminer TOUT le traitement prescrit est crucial
-5. Signes qui nécessitent un médecin immédiatement
+IMPORTANT — NE JAMAIS te présenter ou dire "Je suis REBEC-DIN" : l'interface affiche déjà ton identité.
+Réponds directement à la question posée, sans introduction.
 
-RÈGLES :
+Pour les questions sur un médicament, structure ta réponse ainsi :
+1. 💊 Indication — à quoi ça sert (1 phrase claire)
+2. 📋 Posologie standard — doses habituelles adulte/enfant (sans personnaliser)
+3. ⏰ Conseil de prise — à jeun ? après repas ? avec beaucoup d'eau ?
+4. ⚠️ Précautions principales et contre-indications
+5. 🚨 Signes d'alarme nécessitant un médecin immédiatement
+
+RÈGLES ABSOLUES :
 - Français uniquement
-- 200 mots maximum, ton pédagogue et empathique
-- Jamais de dosage personnalisé
-- Toujours rappeler de consulter un professionnel$contextInfo""",
-        userMessage: "Conseils de base pour le médicament : $medicationName",
+- Réponse complète, entre 150 et 300 mots — ne pas couper la réponse
+- Jamais de dosage personnalisé (toujours "dose standard" ou "selon prescription")
+- Toujours rappeler de consulter un professionnel de santé$contextInfo""",
+        userMessage: medicationName,
       ).timeout(_timeout);
 
       return _extractText(response);
@@ -272,7 +275,7 @@ Si aucune prescription claire n'est visible, réponds : []""",
       ],
       'generationConfig': {
         'temperature': 0.7,
-        'maxOutputTokens': 600,
+        'maxOutputTokens': 1200,
       }
     });
 

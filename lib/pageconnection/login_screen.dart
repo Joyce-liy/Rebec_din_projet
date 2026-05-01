@@ -236,7 +236,38 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Widget _buildDivider() => Row(children: [const Expanded(child: Divider()), Padding(padding: const EdgeInsets.symmetric(horizontal: 15), child: Text("OU", style: TextStyle(color: Colors.grey.shade400))), const Expanded(child: Divider())]);
 
-  Widget _buildGoogleButton() => SizedBox(width: double.infinity, height: 56, child: OutlinedButton(onPressed: _isLoading ? null : _handleGoogleSignIn, style: OutlinedButton.styleFrom(side: BorderSide(color: Colors.grey.shade300), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Image.network('https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png', height: 24), const SizedBox(width: 12), const Text("Continuer avec Google", style: TextStyle(color: Colors.black87, fontWeight: FontWeight.w600))])));
+  Widget _buildGoogleButton() => SizedBox(
+      width: double.infinity, 
+      height: 48, 
+      child: OutlinedButton(
+        onPressed: _isLoading ? null : _handleGoogleSignIn,
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: Colors.grey.shade300),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: EdgeInsets.zero,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Ajout de la virgule ici après l'image
+            Image.asset('assets/google.png', height: 22), 
+            const SizedBox(width: 12),
+            const Flexible(
+              child: Text(
+                "Continuer avec Google",
+                style: TextStyle(
+                  color: Colors.black87,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
 
   Widget _buildFooter() => Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Text("Pas de compte ? "), GestureDetector(onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const SignupScreen())), child: const Text("S'inscrire", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)))]);
 }
