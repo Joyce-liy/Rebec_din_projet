@@ -121,11 +121,11 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
                         ),
                         _buildActionCard(
                           context,
-                          "Stats",
+                          "Gestion",
                           "Vues et clics",
                           Icons.bar_chart_rounded,
                           Colors.purpleAccent,
-                          StatsScreen(), //pour les statistiques
+                         StatistiqueScreen(), //pour les statistiques
                         ),
                       ],
                     ),

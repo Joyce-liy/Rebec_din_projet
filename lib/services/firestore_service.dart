@@ -5,12 +5,19 @@ class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // Ajouter ou mettre à jour une pharmacie
-  Future<void> savePharmacy(Pharmacy pharmacy) async {
+  Future<String> savePharmacy(Pharmacy pharmacy) async {
     try {
-      await _db.collection('pharmacies').doc(pharmacy.id.isEmpty ? null : pharmacy.id).set(
+
+      final docRef = pharmacy.id.isEmpty
+          ? _db.collection('pharmacies').doc()
+          : _db.collection('pharmacies').doc(pharmacy.id);
+
+      await docRef.set(
         pharmacy.toFirestore(),
         SetOptions(merge: true),
       );
+
+      return docRef.id; // <-- On retourne l'ID ici !
     } catch (e) {
       print('Erreur lors de l\'enregistrement de la pharmacie: $e');
       rethrow;

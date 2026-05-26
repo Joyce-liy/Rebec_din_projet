@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:file_picker/file_picker.dart';
 import '../theme.dart';
 import '../models/pharmacy.dart';
 import '../services/firestore_service.dart';
@@ -21,6 +22,10 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
   final TextEditingController _whatsappController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
+
+  // <-- 2. VARIABLES POUR LE FICHIER DE MÉDICAMENTS
+  String? _selectedFileName;
+  PlatformFile? _pickedFile;
 
   @override
   void initState() {
@@ -45,14 +50,49 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
       _loading = false;
     });
 
-    // Centrer la caméra sur la position trouvée
     _mapController?.animateCamera(CameraUpdate.newLatLng(_currentPosition));
+  }
+
+  /// <-- 3. MÉTHODE DE SÉLECTION ET VALIDATION DU FICHIER
+  Future<void> _pickMedicineFile(StateSetter setModalState) async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv', 'xlsx'], // Restriction native au niveau de l'OS
+      );
+
+      if (result != null) {
+        PlatformFile file = result.files.first;
+        String extension = file.extension?.toLowerCase() ?? '';
+
+        // Double vérification stricte de l'extension
+        if (extension == 'csv' || extension == 'xlsx') {
+          setModalState(() {
+            _pickedFile = file;
+            _selectedFileName = file.name;
+          });
+        } else {
+          _showErrorSnackBar("Format invalide ! Veuillez choisir un fichier .csv ou .xlsx");
+        }
+      }
+    } catch (e) {
+      _showErrorSnackBar("Erreur lors de la sélection du fichier : $e");
+    }
+  }
+
+  void _showErrorSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // 1. UTILISATION DU BOUTON FLOTTANT
       floatingActionButton: _loading || _isSaving
           ? null
           : FloatingActionButton.extended(
@@ -67,7 +107,6 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
 
       body: Stack(
         children: [
-          // FOND : GOOGLE MAPS
           _loading
               ? Center(child: CircularProgressIndicator(color: PharmaTheme.emeraldGreen))
               : GoogleMap(
@@ -75,7 +114,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
             onMapCreated: (controller) => _mapController = controller,
             myLocationEnabled: true,
             myLocationButtonEnabled: false,
-            padding: EdgeInsets.only(top: 140),
+            padding: EdgeInsets.only(top: 90), // Réduit pour correspondre au nouveau header soft
             onCameraMove: (position) {
               _currentPosition = position.target;
             },
@@ -88,7 +127,6 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
             },
           ),
 
-          // HEADER PREMIUM
           Positioned(
             top: 0, left: 0, right: 0,
             child: _buildHeader(),
@@ -107,101 +145,170 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
   void _showRegistrationSheet(BuildContext context) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // Important pour que le clavier ne cache pas tout
+      isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(context).viewInsets.bottom, // Ajuste selon le clavier
-        ),
-        child: Container(
-          padding: EdgeInsets.fromLTRB(25, 12, 25, 25),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 45, height: 5,
-                  margin: EdgeInsets.only(bottom: 25),
-                  decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
-                ),
-                Row(
+      builder: (context) => StatefulBuilder( // <-- 4. AJOUT DU STATEFULBUILDER POUR METTRE À JOUR LE MODAL IN REALTIME
+        builder: (BuildContext context, StateSetter setModalState) {
+          return Container(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Container(
+              padding: EdgeInsets.fromLTRB(25, 12, 25, 25),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(35)),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.edit_note_rounded, color: PharmaTheme.emeraldGreen, size: 28),
-                    SizedBox(width: 10),
-                    Text("Informations de la Pharmacie",
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF263238))
+                    Container(
+                      width: 45, height: 5,
+                      margin: EdgeInsets.only(bottom: 25),
+                      decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10)),
                     ),
+                    Row(
+                      children: [
+                        Icon(Icons.edit_note_rounded, color: PharmaTheme.emeraldGreen, size: 28),
+                        SizedBox(width: 10),
+                        Text("Informations de la Pharmacie",
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF263238))
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 20),
+                    _buildModernField(
+                      controller: _nameController,
+                      hint: "Nom de l'officine",
+                      icon: Icons.local_pharmacy_outlined,
+                    ),
+                    SizedBox(height: 15),
+                    _buildModernField(
+                      controller: _addressController,
+                      hint: "Adresse physique",
+                      icon: Icons.location_on_outlined,
+                    ),
+                    SizedBox(height: 15),
+                    _buildModernField(
+                      controller: _phoneController,
+                      hint: "Numéro de téléphone",
+                      icon: Icons.phone_outlined,
+                      keyboardType: TextInputType.phone,
+                    ),
+                    SizedBox(height: 15),
+                    _buildModernField(
+                      controller: _whatsappController,
+                      hint: "Contact WhatsApp (ex: 2376XXXXXXXX)",
+                      icon: Icons.chat_bubble_outline_rounded,
+                      keyboardType: TextInputType.phone,
+                    ),
+
+                    // <-- 5. DESIGN DU BOUTON D'AJOUT DE MÉDICAMENT APRÈS WHATSAPP
+                    SizedBox(height: 15),
+                    _buildFilePickerTile(setModalState),
+
+                    SizedBox(height: 25),
+                    _buildConfirmButton(context),
                   ],
                 ),
-                SizedBox(height: 20),
-                _buildModernField(
-                  controller: _nameController,
-                  hint: "Nom de l'officine",
-                  icon: Icons.local_pharmacy_outlined,
-                ),
-                SizedBox(height: 15),
-                _buildModernField(
-                  controller: _addressController,
-                  hint: "Adresse physique",
-                  icon: Icons.location_on_outlined,
-                ),
-                SizedBox(height: 15),
-                _buildModernField(
-                  controller: _phoneController,
-                  hint: "Numéro de téléphone",
-                  icon: Icons.phone_outlined,
-                  keyboardType: TextInputType.phone,
-                ),
-                SizedBox(height: 15),
-                _buildModernField(
-                  controller: _whatsappController,
-                  hint: "Contact WhatsApp (ex: 2376XXXXXXXX)",
-                  icon: Icons.chat_bubble_outline_rounded,
-                  keyboardType: TextInputType.phone,
-                ),
-                SizedBox(height: 25),
-                _buildConfirmButton(context),
-              ],
+              ),
             ),
+          );
+        },
+      ),
+    );
+  }
+
+  /// <-- 6. COMPOSANT VISUEL POUR LE SÉLECTEUR DE FICHIER (CORRIGÉ !)
+  Widget _buildFilePickerTile(StateSetter setModalState) {
+    return InkWell(
+      onTap: () => _pickMedicineFile(setModalState),
+      borderRadius: BorderRadius.circular(15),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+        decoration: BoxDecoration(
+          color: Color(0xFFF8F9FA),
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: _selectedFileName != null ? PharmaTheme.emeraldGreen : Colors.transparent,
+            width: 1,
           ),
+        ),
+        child: Row(
+          children: [
+            // Icône en forme d'épingle / trombone
+            Icon(Icons.attach_file_rounded, color: PharmaTheme.emeraldGreen),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Ajouts des médicaments",
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF263238)),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    _selectedFileName ?? "Sélectionner un fichier (.csv, .xlsx)",
+                    style: TextStyle(
+                      color: _selectedFileName != null ? Colors.black54 : Colors.grey[500],
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (_selectedFileName != null)
+              GestureDetector(
+                onTap: () {
+                  setModalState(() {
+                    _selectedFileName = null;
+                    _pickedFile = null;
+                  });
+                },
+                child: Icon(Icons.cancel_rounded, color: Colors.redAccent),
+              ),
+          ],
         ),
       ),
     );
   }
 
+  /// Nouveau Design du Header : Carte blanche flottante et minimaliste
   Widget _buildHeader() {
-    return Container(
-      height: 150,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [PharmaTheme.emeraldGreen, Color(0xFF004D40)],
-        ),
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(35)),
-      ),
-      child: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 12,
+                offset: Offset(0, 4),
+              ),
+            ],
+          ),
           child: Row(
             children: [
               IconButton(
-                icon: Icon(Icons.arrow_back_ios_new, color: Colors.white),
+                icon: Icon(Icons.arrow_back_ios_new, color: Color(0xFF263238), size: 20),
                 onPressed: () => Navigator.pop(context),
               ),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text("Enregistrer ma Pharmacie",
-                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                  Text("Placez le marqueur sur la carte",
-                      style: TextStyle(color: Colors.white70, fontSize: 12)),
-                ],
+              SizedBox(width: 6),
+              Text(
+                "Enregistrer ma Pharmacie",
+                style: TextStyle(
+                  color: Color(0xFF263238),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -259,7 +366,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
 
     try {
       final pharmacy = Pharmacy(
-        id: "", // Sera généré par Firestore
+        id: "",
         name: _nameController.text.trim(),
         address: _addressController.text.trim(),
         latitude: _currentPosition.latitude,
@@ -282,8 +389,8 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context); // Ferme le dialogue
-                Navigator.pop(context); // Retourne à l'écran précédent
+                Navigator.pop(context);
+                Navigator.pop(context);
               },
               child: Text("OK"),
             ),
