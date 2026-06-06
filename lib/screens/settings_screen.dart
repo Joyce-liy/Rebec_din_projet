@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../theme.dart';
+import 'claim_pharmacy_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -11,6 +13,23 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   bool isDarkMode = false;
   String selectedLanguage = 'Français';
+
+  User? get _user => FirebaseAuth.instance.currentUser;
+
+  /// Retourne le nom d'affichage : priorité au displayName,
+  /// sinon la partie avant le @ de l'email, sinon "Utilisateur"
+  String get _displayName {
+    final user = _user;
+    if (user == null) return 'Utilisateur';
+    if (user.displayName != null && user.displayName!.trim().isNotEmpty) {
+      return user.displayName!.trim();
+    }
+    final email = user.email ?? '';
+    if (email.isNotEmpty) return email.split('@').first;
+    return 'Utilisateur';
+  }
+
+  String get _displayEmail => _user?.email ?? '';
 
   @override
   Widget build(BuildContext context) {
@@ -92,6 +111,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: "Sécurité du compte",
               trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: subTextColor),
             ),
+
+            _buildSettingTile(
+              backgroundColor: cardColor,
+              textColor: textColor,
+              icon: Icons.store_rounded,
+              title: "Récupérer mes anciennes pharmacies",
+              subtitle: "Migration vers le nouveau système",
+              trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: subTextColor),
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ClaimPharmacyScreen()),
+              ),
+            ),
           ],
         ),
       ),
@@ -121,16 +153,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: const Icon(Icons.person_rounded, color: Colors.white, size: 35),
           ),
           const SizedBox(width: 20),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: const [
-              Text("Profil connecté",
-                  style: TextStyle(color: Colors.white70, fontSize: 13)
-              ),
-              Text("Dr. Diallo",
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white)
-              ),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text("Profil connecté",
+                    style: TextStyle(color: Colors.white70, fontSize: 13)
+                ),
+                Text(
+                  _displayName,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (_displayEmail.isNotEmpty)
+                  Text(
+                    _displayEmail,
+                    style: const TextStyle(color: Colors.white60, fontSize: 12),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
           ),
         ],
       ),
@@ -199,4 +243,3 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
-

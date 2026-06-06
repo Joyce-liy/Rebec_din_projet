@@ -8,6 +8,7 @@ import '../models/pharmacy.dart';
 import '../services/firestore_service.dart';
 import '../theme.dart';
 import 'gestion_stock_screen.dart';
+import 'my_pharmacies_screen.dart';
 
 class StatistiqueScreen extends StatefulWidget {
   final Pharmacy? pharmacy;
@@ -94,7 +95,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
             name: data['nom'] ?? '',
             address: data['adresse'] ?? '',
             latitude: (localisation?['latitude'] as num?)?.toDouble() ?? 0.0,
-            longitude: (localisation?['longitude'] as num?)?.toDouble() ?? 0.0,
+            longitude:
+                (localisation?['longitude'] as num?)?.toDouble() ?? 0.0,
             telephone: data['telephone'] ?? '',
             whatsapp: data['whatsapp'] ?? '',
             isActive: data['is_active'] ?? true,
@@ -139,10 +141,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
       for (int i = 1; i < lines.length; i++) {
         final line = lines[i].trim();
         if (line.isEmpty) continue;
-        final values = line
-            .split(',')
-            .map((v) => v.trim().replaceAll('"', ''))
-            .toList();
+        final values =
+            line.split(',').map((v) => v.trim().replaceAll('"', '')).toList();
         if (values.length < 2) continue;
 
         final Map<String, dynamic> row = {};
@@ -159,9 +159,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
   }
 
   Map<String, dynamic>? _normalizeMed(Map<String, dynamic> row) {
-    final nom = (row['nom_medicament'] ?? row['nom'] ?? row['name'] ?? '')
-        .toString()
-        .trim();
+    final nom =
+        (row['nom_medicament'] ?? row['nom'] ?? row['name'] ?? '').toString().trim();
     if (nom.isEmpty) return null;
     return {
       'id': row['id']?.toString() ?? '',
@@ -170,16 +169,14 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
       'forme': (row['forme'] ?? '').toString(),
       'categorie': (row['categorie'] ?? '').toString(),
       'fabricant': (row['fabricant'] ?? '').toString(),
-      'prix':
-          double.tryParse(
-            (row['prix_fcfa'] ?? row['prix'] ?? '0').toString(),
-          ) ??
+      'prix': double.tryParse(
+              (row['prix_fcfa'] ?? row['prix'] ?? '0').toString()) ??
           0,
       'quantite':
-          int.tryParse((row['quantite'] ?? row['stock'] ?? '0').toString()) ??
-          0,
+          int.tryParse((row['quantite'] ?? row['stock'] ?? '0').toString()) ?? 0,
       'statut': _parseStatut(row['stock'] ?? row['statut'] ?? ''),
-      'ordonnance': (row['ordonnance'] ?? '').toString().toLowerCase() == 'oui',
+      'ordonnance':
+          (row['ordonnance'] ?? '').toString().toLowerCase() == 'oui',
       'last_update': DateTime.now().toIso8601String(),
     };
   }
@@ -211,10 +208,7 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
 
       final parsed = _parseCsv(file);
       if (parsed.isEmpty) {
-        _showSnackBar(
-          'Aucun médicament trouvé dans le fichier.',
-          Colors.orange,
-        );
+        _showSnackBar('Aucun médicament trouvé dans le fichier.', Colors.orange);
         return;
       }
 
@@ -249,7 +243,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
       // Récupère les médicaments existants
       final doc = await docRef.get();
       final data = doc.data();
-      final List<dynamic> existing = List.from(data?['medicaments'] ?? []);
+      final List<dynamic> existing =
+          List.from(data?['medicaments'] ?? []);
 
       // Fusion : écrase si le même nom+dosage existe, sinon ajoute
       final Map<String, Map<String, dynamic>> mergeMap = {};
@@ -315,10 +310,7 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
   Future<void> _updatePharmacyDetails() async {
     if (_currentPharmacy == null) return;
     if (_nameController.text.isEmpty || _phoneController.text.isEmpty) {
-      _showSnackBar(
-        'Le nom et le téléphone sont obligatoires',
-        Colors.redAccent,
-      );
+      _showSnackBar('Le nom et le téléphone sont obligatoires', Colors.redAccent);
       return;
     }
     setState(() => _isUpdating = true);
@@ -361,8 +353,7 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
     if (_isLoading) {
       return const Scaffold(
         body: Center(
-          child: CircularProgressIndicator(color: PharmaTheme.emeraldGreen),
-        ),
+            child: CircularProgressIndicator(color: PharmaTheme.emeraldGreen)),
       );
     }
     if (_currentPharmacy == null) {
@@ -386,28 +377,18 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new,
-            color: Color(0xFF2C3E50),
-            size: 20,
-          ),
+          icon: const Icon(Icons.arrow_back_ios_new,
+              color: Color(0xFF2C3E50), size: 20),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
           if (!_isReadOnly)
             TextButton.icon(
-              icon: const Icon(
-                Icons.close_rounded,
-                color: Colors.redAccent,
-                size: 18,
-              ),
-              label: const Text(
-                'Annuler',
-                style: TextStyle(
-                  color: Colors.redAccent,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              icon: const Icon(Icons.close_rounded,
+                  color: Colors.redAccent, size: 18),
+              label: const Text('Annuler',
+                  style: TextStyle(
+                      color: Colors.redAccent, fontWeight: FontWeight.bold)),
               onPressed: () => setState(() {
                 _isReadOnly = true;
                 _initFields();
@@ -452,11 +433,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                           color: Colors.white.withOpacity(0.2),
                           shape: BoxShape.circle,
                         ),
-                        child: const Icon(
-                          Icons.local_pharmacy,
-                          color: Colors.white,
-                          size: 28,
-                        ),
+                        child: const Icon(Icons.local_pharmacy,
+                            color: Colors.white, size: 28),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -502,8 +480,7 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                           context,
                           MaterialPageRoute(
                             builder: (_) => GestionStockScreen(
-                              pharmacyId: _currentPharmacy!.id,
-                            ),
+                                pharmacyId: _currentPharmacy!.id),
                           ),
                         ).then((_) => _loadMedicamentCount()),
                       ),
@@ -511,14 +488,28 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: _buildMicroStatCard(
-                        'Statut',
-                        _isActive ? 'Actif' : 'Inactif',
-                        _isActive
-                            ? Icons.check_circle_rounded
-                            : Icons.pause_circle_rounded,
-                        _isActive
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFFF59E0B),
+                        'Mes Pharmacies',
+                        'Changer',
+                        Icons.store_rounded,
+                        const Color(0xFF6366F1),
+                        onTap: () async {
+                          final selected = await Navigator.push<Pharmacy>(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const MyPharmaciesScreen(),
+                            ),
+                          );
+                          if (selected != null && mounted) {
+                            setState(() {
+                              _currentPharmacy = selected;
+                              _isActive = selected.isActive;
+                              _initFields();
+                            });
+                            _loadMedicamentCount();
+                            // Retourner aussi la pharmacie au hub
+                            Navigator.pop(context, selected);
+                          }
+                        },
                       ),
                     ),
                   ],
@@ -542,30 +533,26 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                   child: Column(
                     children: [
                       _buildResponsiveField(
-                        controller: _nameController,
-                        label: "Nom de l'établissement",
-                        icon: Icons.store_rounded,
-                      ),
+                          controller: _nameController,
+                          label: "Nom de l'établissement",
+                          icon: Icons.store_rounded),
                       _buildDivider(),
                       _buildResponsiveField(
-                        controller: _addressController,
-                        label: 'Adresse Géographique',
-                        icon: Icons.map_rounded,
-                      ),
+                          controller: _addressController,
+                          label: 'Adresse Géographique',
+                          icon: Icons.map_rounded),
                       _buildDivider(),
                       _buildResponsiveField(
-                        controller: _phoneController,
-                        label: 'Numéro de téléphone',
-                        icon: Icons.phone_android_rounded,
-                        keyboardType: TextInputType.phone,
-                      ),
+                          controller: _phoneController,
+                          label: 'Numéro de téléphone',
+                          icon: Icons.phone_android_rounded,
+                          keyboardType: TextInputType.phone),
                       _buildDivider(),
                       _buildResponsiveField(
-                        controller: _whatsappController,
-                        label: 'WhatsApp Pro',
-                        icon: Icons.chat_bubble_rounded,
-                        keyboardType: TextInputType.phone,
-                      ),
+                          controller: _whatsappController,
+                          label: 'WhatsApp Pro',
+                          icon: Icons.chat_bubble_rounded,
+                          keyboardType: TextInputType.phone),
                     ],
                   ),
                 ),
@@ -582,10 +569,9 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                       title: const Text(
                         'Visible sur la carte',
                         style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF2C3E50),
-                        ),
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF2C3E50)),
                       ),
                       subtitle: const Text(
                         'Les clients peuvent trouver votre officine',
@@ -622,20 +608,22 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: _isReadOnly
-                            ? [const Color(0xFF2C3E50), const Color(0xFF1A252F)]
+                            ? [
+                                const Color(0xFF2C3E50),
+                                const Color(0xFF1A252F)
+                              ]
                             : [
                                 PharmaTheme.emeraldGreen,
-                                const Color(0xFF059669),
+                                const Color(0xFF059669)
                               ],
                       ),
                       borderRadius: BorderRadius.circular(18),
                       boxShadow: [
                         BoxShadow(
-                          color:
-                              (_isReadOnly
-                                      ? const Color(0xFF2C3E50)
-                                      : PharmaTheme.emeraldGreen)
-                                  .withOpacity(0.2),
+                          color: (_isReadOnly
+                                  ? const Color(0xFF2C3E50)
+                                  : PharmaTheme.emeraldGreen)
+                              .withOpacity(0.2),
                           blurRadius: 10,
                           offset: const Offset(0, 5),
                         ),
@@ -657,8 +645,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                             _isUpdating
                                 ? 'ENREGISTREMENT...'
                                 : (_isReadOnly
-                                      ? 'MODIFIER LES INFORMATIONS'
-                                      : 'ENREGISTRER LA FICHE'),
+                                    ? 'MODIFIER LES INFORMATIONS'
+                                    : 'ENREGISTRER LA FICHE'),
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -687,9 +675,7 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                     Text(
                       _isImporting ? 'Import en cours...' : 'Enregistrement...',
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
+                          color: Colors.white, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -734,11 +720,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                   color: const Color(0xFF10B981).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
-                  Icons.upload_file_rounded,
-                  color: PharmaTheme.emeraldGreen,
-                  size: 18,
-                ),
+                child: const Icon(Icons.upload_file_rounded,
+                    color: PharmaTheme.emeraldGreen, size: 18),
               ),
               const SizedBox(width: 10),
               const Text(
@@ -770,15 +753,13 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
               ),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.attach_file_rounded,
-                    color: PharmaTheme.emeraldGreen,
-                    size: 18,
-                  ),
+                  const Icon(Icons.attach_file_rounded,
+                      color: PharmaTheme.emeraldGreen, size: 18),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      _selectedFileName ?? 'Sélectionner un fichier .csv',
+                      _selectedFileName ??
+                          'Sélectionner un fichier .csv',
                       style: TextStyle(
                         fontSize: 13,
                         color: _selectedFileName != null
@@ -798,11 +779,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                         _pickedFile = null;
                         _parsedMedications = [];
                       }),
-                      child: const Icon(
-                        Icons.cancel_rounded,
-                        color: Colors.redAccent,
-                        size: 18,
-                      ),
+                      child: const Icon(Icons.cancel_rounded,
+                          color: Colors.redAccent, size: 18),
                     ),
                 ],
               ),
@@ -824,11 +802,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                 children: [
                   Row(
                     children: [
-                      const Icon(
-                        Icons.check_circle_rounded,
-                        color: Color(0xFF10B981),
-                        size: 15,
-                      ),
+                      const Icon(Icons.check_circle_rounded,
+                          color: Color(0xFF10B981), size: 15),
                       const SizedBox(width: 6),
                       Text(
                         '${_parsedMedications.length} médicaments prêts',
@@ -842,47 +817,40 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                   ),
                   const SizedBox(height: 8),
                   // Aperçu 3 premiers
-                  ..._parsedMedications
-                      .take(3)
-                      .map(
-                        (med) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 3),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.fiber_manual_record,
-                                size: 6,
+                  ..._parsedMedications.take(3).map((med) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 3),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.fiber_manual_record,
+                                size: 6, color: Color(0xFF059669)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${med['nom']} • ${med['dosage']}',
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF065F46)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              '${med['prix']} F',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
                                 color: Color(0xFF059669),
                               ),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  '${med['nom']} • ${med['dosage']}',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF065F46),
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Text(
-                                '${med['prix']} F',
-                                style: const TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF059669),
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      ),
+                      )),
                   if (_parsedMedications.length > 3)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
                         '... et ${_parsedMedications.length - 3} autres',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                        style: TextStyle(
+                            fontSize: 11, color: Colors.grey[500]),
                       ),
                     ),
                 ],
@@ -899,8 +867,7 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF10B981),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                      borderRadius: BorderRadius.circular(12)),
                   elevation: 0,
                 ),
                 icon: _isImporting
@@ -908,19 +875,12 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
+                            strokeWidth: 2, color: Colors.white),
                       )
-                    : const Icon(
-                        Icons.cloud_upload_rounded,
-                        color: Colors.white,
-                        size: 18,
-                      ),
+                    : const Icon(Icons.cloud_upload_rounded,
+                        color: Colors.white, size: 18),
                 label: Text(
-                  _isImporting
-                      ? 'Import en cours...'
-                      : 'Importer dans Firebase',
+                  _isImporting ? 'Import en cours...' : 'Importer dans Firebase',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w700,
@@ -973,14 +933,11 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey[500],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[500],
+                          fontWeight: FontWeight.w500)),
                   const SizedBox(height: 2),
                   Text(
                     value,
@@ -996,11 +953,8 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
               ),
             ),
             if (onTap != null)
-              const Icon(
-                Icons.arrow_forward_ios_rounded,
-                size: 12,
-                color: Colors.grey,
-              ),
+              const Icon(Icons.arrow_forward_ios_rounded,
+                  size: 12, color: Colors.grey),
           ],
         ),
       ),
@@ -1025,22 +979,18 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey[500],
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey[500],
+                          fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(
                     controller.text.isEmpty ? 'Non renseigné' : controller.text,
                     style: const TextStyle(
-                      fontSize: 15,
-                      color: Color(0xFF2C3E50),
-                      fontWeight: FontWeight.w600,
-                    ),
+                        fontSize: 15,
+                        color: Color(0xFF2C3E50),
+                        fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -1054,42 +1004,33 @@ class _StatistiqueScreenState extends State<StatistiqueScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: PharmaTheme.emeraldGreen,
-            ),
-          ),
+          Text(label,
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: PharmaTheme.emeraldGreen)),
           const SizedBox(height: 6),
           TextField(
             controller: controller,
             keyboardType: keyboardType,
             style: const TextStyle(
-              fontSize: 15,
-              color: Color(0xFF2C3E50),
-              fontWeight: FontWeight.w500,
-            ),
+                fontSize: 15,
+                color: Color(0xFF2C3E50),
+                fontWeight: FontWeight.w500),
             decoration: InputDecoration(
-              prefixIcon: Icon(icon, color: PharmaTheme.emeraldGreen, size: 20),
+              prefixIcon:
+                  Icon(icon, color: PharmaTheme.emeraldGreen, size: 20),
               filled: true,
               fillColor: const Color(0xFFF8F9FA),
-              contentPadding: const EdgeInsets.symmetric(
-                vertical: 14,
-                horizontal: 16,
-              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none),
               focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(
-                  color: PharmaTheme.emeraldGreen,
-                  width: 1.5,
-                ),
-              ),
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(
+                      color: PharmaTheme.emeraldGreen, width: 1.5)),
             ),
           ),
         ],

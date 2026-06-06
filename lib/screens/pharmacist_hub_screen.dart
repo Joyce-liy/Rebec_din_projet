@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../models/pharmacy.dart';
 import '../theme.dart';
 import 'add_pharmacy_screen.dart';
 import 'subscription_screen.dart';
 import 'create_ad_screen.dart';
 import 'settings_screen.dart';
 import 'statistique_screen.dart';
+import 'gestion_stock_screen.dart';
 import 'welcome_screen.dart';
 
 class PharmacistHubScreen extends StatefulWidget {
@@ -19,6 +21,7 @@ class PharmacistHubScreen extends StatefulWidget {
 class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
   User? _currentUser;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
+  Pharmacy? _selectedPharmacy; // pharmacie active choisie depuis StatistiqueScreen
 
   @override
   void initState() {
@@ -122,10 +125,12 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
                         _buildActionCard(
                           context,
                           "Gestion",
-                          "Vues et clics",
+                          _selectedPharmacy != null
+                              ? _selectedPharmacy!.name
+                              : "Vues et clics",
                           Icons.bar_chart_rounded,
                           Colors.purpleAccent,
-                         StatistiqueScreen(), //pour les statistiques
+                          StatistiqueScreen(pharmacy: _selectedPharmacy),
                         ),
                       ],
                     ),
@@ -304,12 +309,16 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
     Widget? target,
   ) {
     return GestureDetector(
-      onTap: () {
+      onTap: () async {
         if (target != null) {
-          Navigator.push(
+          final result = await Navigator.push<Pharmacy>(
             context,
             MaterialPageRoute(builder: (context) => target),
           );
+          // Si StatistiqueScreen retourne une pharmacie sélectionnée, on met à jour le hub
+          if (result != null && mounted) {
+            setState(() => _selectedPharmacy = result);
+          }
         }
       },
       child: Container(
