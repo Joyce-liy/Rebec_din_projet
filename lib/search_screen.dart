@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pharma/profil.dart';
 import 'package:pharma/map/medication_map_page.dart';
+import 'package:pharma/map/in_app_navigation_page.dart';
 import 'package:pharma/models/pharmacy.dart';
 import 'package:pharma/scanner_page.dart';
 import 'package:pharma/services/location_service.dart';
 import 'package:pharma/services/pharmacy_service.dart';
+import 'package:pharma/services/whatsapp_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:pharma/services/history_service.dart';
@@ -14,9 +17,9 @@ import 'package:permission_handler/permission_handler.dart';
 
 class SearchScreen extends StatefulWidget {
   final List<String>? scannedMedications;
-  
+
   const SearchScreen({
-    super.key, 
+    super.key,
     required void Function(bool isFocused) onSearchFocusChanged,
     this.scannedMedications,
   });
@@ -25,13 +28,14 @@ class SearchScreen extends StatefulWidget {
   _SearchScreenState createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderStateMixin {
-  static const double _radiusMeters = 5000;
+class _SearchScreenState extends State<SearchScreen>
+    with SingleTickerProviderStateMixin {
   late stt.SpeechToText _speech;
   late AnimationController _animationController;
   Timer? _silenceTimer;
   bool _isListening = false;
   final PharmacyService _pharmacyService = PharmacyService();
+  final WhatsAppService _whatsAppService = WhatsAppService();
   final LocationService _locationService = LocationService();
   final TextEditingController _searchController = TextEditingController();
 
@@ -52,9 +56,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     )..repeat(reverse: true);
     _loadSearchHistory();
     _initialize();
-    
+
     // Traiter les médicaments scannés s'ils existent
-    if (widget.scannedMedications != null && widget.scannedMedications!.isNotEmpty) {
+    if (widget.scannedMedications != null &&
+        widget.scannedMedications!.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _processScannedMedications();
       });
@@ -66,8 +71,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 
   void _processScannedMedications() {
-    if (widget.scannedMedications == null || widget.scannedMedications!.isEmpty) return;
-    
+    if (widget.scannedMedications == null || widget.scannedMedications!.isEmpty)
+      return;
+
     // Joindre tous les médicaments avec un séparateur
     final searchText = widget.scannedMedications!.join(', ');
     _searchController.text = searchText;
@@ -271,6 +277,12 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     )) {
       return StockStatus.stockLimite;
     }
+    if (availabilities.any(
+      (availability) =>
+          availability.medication.status == StockStatus.aConfirmer,
+    )) {
+      return StockStatus.aConfirmer;
+    }
     return StockStatus.rupture;
   }
 
@@ -282,6 +294,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         return const Color(0xFFF59E0B);
       case StockStatus.rupture:
         return const Color(0xFFEF4444);
+      case StockStatus.aConfirmer:
+        return Colors.grey;
       default:
         return Colors.grey;
     }
@@ -323,7 +337,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
   }
 
   List<MedicationAvailability> _sortedAvailabilities(
-      MedicationCatalogEntry entry) {
+    MedicationCatalogEntry entry,
+  ) {
     final List<MedicationAvailability> availabilities =
         List<MedicationAvailability>.from(entry.availabilities);
     if (_userLocation == null) {
@@ -331,19 +346,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     }
     final dynamic location = _userLocation;
     final List<MedicationAvailability> filtered = availabilities
-        .where((availability) {
-      final point = availability.pharmacy.localisation;
-      if (point == null) {
-        return false;
-      }
-      final distance = GeoUtils.haversineDistance(
-        startLat: location.latitude,
-        startLng: location.longitude,
-        endLat: point.latitude,
-        endLng: point.longitude,
-      );
-      return distance <= _radiusMeters;
-    }).toList();
+        .where((availability) => availability.pharmacy.localisation != null)
+        .toList();
 
     filtered.sort((a, b) {
       double distanceA = double.infinity;
@@ -381,25 +385,254 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
     );
   }
 
-  Future<void> _openDirections(Pharmacy pharmacy) async {
-    final point = pharmacy.localisation;
+  Future<void> _openDirections(Pharmacy pharmacy, {Color? accentColor}) async {
+    // Remplacement local pour ouverture directions
+    final dynamic point = pharmacy.localisation;
     if (point == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Localisation indisponible pour cette pharmacie.')),
+          const SnackBar(
+            content: Text('Localisation indisponible pour cette pharmacie.'),
+          ),
         );
       }
       return;
     }
-    final Uri url = Uri.parse(
-      'https://www.google.com/maps/dir/?api=1&destination=${point.latitude},${point.longitude}&travelmode=driving',
+
+    double destLat = 0.0;
+    double destLng = 0.0;
+    try {
+      final a = (point is Map)
+          ? (point['latitude'] ?? point['lat'])
+          : ((point as dynamic).latitude ?? (point as dynamic).lat);
+      final b = (point is Map)
+          ? (point['longitude'] ?? point['lng'] ?? point['lon'])
+          : ((point as dynamic).longitude ??
+                (point as dynamic).lng ??
+                (point as dynamic).lon);
+      if (a is num) destLat = a.toDouble();
+      if (b is num) destLng = b.toDouble();
+    } catch (_) {}
+
+    if (destLat == 0.0 || destLng == 0.0) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Coordonnées de la pharmacie indisponibles.'),
+          ),
+        );
+      return;
+    }
+
+    dynamic userLoc = _userLocation;
+    if (userLoc == null) {
+      try {
+        userLoc = await _locationService.tryGetCurrentPosition();
+        if (userLoc != null) _userLocation = userLoc;
+      } catch (_) {}
+    }
+
+    if (userLoc == null) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Position utilisateur introuvable.')),
+        );
+      return;
+    }
+
+    double startLat = 0.0;
+    double startLng = 0.0;
+    try {
+      final sa = (userLoc is Map)
+          ? (userLoc['latitude'] ?? userLoc['lat'])
+          : (userLoc.latitude ?? (userLoc as dynamic).lat);
+      final sb = (userLoc is Map)
+          ? (userLoc['longitude'] ?? userLoc['lng'] ?? userLoc['lon'])
+          : (userLoc.longitude ??
+                (userLoc as dynamic).lng ??
+                (userLoc as dynamic).lon);
+      if (sa is num) startLat = sa.toDouble();
+      if (sb is num) startLng = sb.toDouble();
+    } catch (_) {}
+
+    if (startLat == 0.0 || startLng == 0.0) {
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Impossible de déterminer votre position.'),
+          ),
+        );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InAppNavigationPage(
+          startLat: startLat,
+          startLng: startLng,
+          destLat: destLat,
+          destLng: destLng,
+          pharmacyName: pharmacy.nom,
+          accentColor: accentColor,
+        ),
+      ),
     );
-    final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+  }
+
+  String? _primaryWhatsAppNumber(Pharmacy pharmacy) {
+    final whatsapp = pharmacy.whatsapp?.trim();
+    if (whatsapp != null && whatsapp.isNotEmpty) {
+      return whatsapp;
+    }
+    final phone = pharmacy.telephone?.trim();
+    if (phone != null && phone.isNotEmpty) {
+      return phone;
+    }
+    return null;
+  }
+
+  Future<void> _makePhoneCall(Pharmacy pharmacy) async {
+    final phone = pharmacy.telephone?.trim();
+    if (phone == null || phone.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Numero de telephone indisponible.')),
+        );
+      }
+      return;
+    }
+
+    final launched = await launchUrl(Uri(scheme: 'tel', path: phone));
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Impossible d'ouvrir l'itineraire.")),
+        const SnackBar(content: Text("Impossible de lancer l'appel.")),
       );
     }
+  }
+
+  Future<void> _openWhatsAppAvailability(
+    Pharmacy pharmacy,
+    String medicationName,
+  ) async {
+    final phone = _primaryWhatsAppNumber(pharmacy);
+    if (phone == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Contact WhatsApp indisponible.')),
+        );
+      }
+      return;
+    }
+
+    final launched = await _whatsAppService.openAvailabilityRequest(
+      phoneNumber: phone,
+      pharmacyName: pharmacy.nom,
+      medicationName: medicationName,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (!launched) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Impossible d'ouvrir WhatsApp.")),
+      );
+      return;
+    }
+
+    await _showWhatsAppReplyDialog(pharmacy, medicationName);
+  }
+
+  Future<void> _showWhatsAppReplyDialog(
+    Pharmacy pharmacy,
+    String medicationName,
+  ) async {
+    final controller = TextEditingController();
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Interpreter la reponse'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Quand la pharmacie repond sur WhatsApp, copiez sa reponse ici.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  hintText: 'Ex: Oui disponible a 1500 FCFA',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Plus tard'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final reply = controller.text.trim();
+                if (reply.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Collez la reponse recue.')),
+                  );
+                  return;
+                }
+                Navigator.of(dialogContext).pop();
+                _showInterpretationResult(
+                  pharmacy: pharmacy,
+                  medicationName: medicationName,
+                  reply: reply,
+                );
+              },
+              child: const Text('Interpreter'),
+            ),
+          ],
+        );
+      },
+    );
+
+    controller.dispose();
+  }
+
+  Future<void> _showInterpretationResult({
+    required Pharmacy pharmacy,
+    required String medicationName,
+    required String reply,
+  }) async {
+    final interpretation = _whatsAppService.interpretPharmacyReply(
+      reply,
+      pharmacyName: pharmacy.nom,
+      medicationName: medicationName,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Reponse interpretee'),
+        content: Text(interpretation.summary),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildStatusBadge(StockStatus status) {
@@ -453,13 +686,19 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             SizedBox(
               width: 20,
               height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF10B981)),
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                color: Color(0xFF10B981),
+              ),
             ),
             SizedBox(width: 12),
             Expanded(
               child: Text(
                 'Localisation en cours...',
-                style: TextStyle(fontWeight: FontWeight.w500, color: Color(0xFF047857)),
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF047857),
+                ),
               ),
             ),
           ],
@@ -489,13 +728,20 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 color: const Color(0xFF10B981).withOpacity(0.2),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.my_location, color: Color(0xFF047857), size: 20),
+              child: const Icon(
+                Icons.my_location,
+                color: Color(0xFF047857),
+                size: 20,
+              ),
             ),
             const SizedBox(width: 12),
             const Expanded(
               child: Text(
                 'Localisation activée',
-                style: TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF047857)),
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF047857),
+                ),
               ),
             ),
             Material(
@@ -505,7 +751,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   padding: const EdgeInsets.all(8),
-                  child: const Icon(Icons.refresh, color: Color(0xFF10B981), size: 20),
+                  child: const Icon(
+                    Icons.refresh,
+                    color: Color(0xFF10B981),
+                    size: 20,
+                  ),
                 ),
               ),
             ),
@@ -535,7 +785,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               color: const Color(0xFFF59E0B).withOpacity(0.2),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.location_off, color: Color(0xFFD97706), size: 20),
+            child: const Icon(
+              Icons.location_off,
+              color: Color(0xFFD97706),
+              size: 20,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -543,7 +797,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               _locationUnavailable
                   ? 'Localisation indisponible'
                   : 'Activez votre localisation',
-              style: const TextStyle(fontWeight: FontWeight.w500, color: Color(0xFFD97706)),
+              style: const TextStyle(
+                fontWeight: FontWeight.w500,
+                color: Color(0xFFD97706),
+              ),
             ),
           ),
           Material(
@@ -552,7 +809,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               onTap: _refreshLocation,
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF59E0B).withOpacity(0.2),
                   borderRadius: BorderRadius.circular(8),
@@ -586,7 +846,7 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
               const SizedBox(height: 12),
               Text(
-                'Aucune pharmacie dans un rayon de 5 km',
+                'Aucune pharmacie Firebase trouvee',
                 style: TextStyle(color: Colors.grey[600], fontSize: 14),
                 textAlign: TextAlign.center,
               ),
@@ -603,6 +863,36 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
         final pharmacy = availability.pharmacy;
         final medication = availability.medication;
         final distance = _distanceToPharmacy(pharmacy);
+        final hasPhone = pharmacy.telephone?.trim().isNotEmpty == true;
+        final hasWhatsApp = _primaryWhatsAppNumber(pharmacy) != null;
+
+        // Determine status label & color for badge
+        String statusLabel;
+        Color statusBadgeColor;
+        IconData statusIcon;
+        switch (medication.status) {
+          case StockStatus.enStock:
+            statusLabel = 'DISPONIBLE';
+            statusBadgeColor = const Color(0xFF059669);
+            statusIcon = Icons.check_circle;
+            break;
+          case StockStatus.stockLimite:
+            statusLabel = 'STOCK LIMITÉ';
+            statusBadgeColor = const Color(0xFFF59E0B);
+            statusIcon = Icons.warning_rounded;
+            break;
+          case StockStatus.rupture:
+            statusLabel = 'RUPTURE';
+            statusBadgeColor = const Color(0xFFEF4444);
+            statusIcon = Icons.cancel;
+            break;
+          case StockStatus.aConfirmer:
+          default:
+            statusLabel = 'DISPONIBLE';
+            statusBadgeColor = const Color(0xFF059669);
+            statusIcon = Icons.check_circle;
+            break;
+        }
 
         return TweenAnimationBuilder<double>(
           tween: Tween(begin: 0.0, end: 1.0),
@@ -611,148 +901,295 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           builder: (context, value, child) {
             return Transform.translate(
               offset: Offset(0, 15 * (1 - value)),
-              child: Opacity(
-                opacity: value,
-                child: child,
-              ),
+              child: Opacity(opacity: value, child: child),
             );
           },
           child: Container(
-            margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+            margin: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.grey[200]!),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
+                  color: Colors.black.withOpacity(0.06),
+                  blurRadius: 16,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.02),
+                  blurRadius: 4,
+                  offset: const Offset(0, 1),
                 ),
               ],
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              const Color(0xFF10B981).withOpacity(0.1),
-                              const Color(0xFF059669).withOpacity(0.05),
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(12),
+                      // ── Pharmacy Name (centered) ──
+                      Text(
+                        pharmacy.nom,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 17,
+                          color: Color(0xFF1E293B),
+                          letterSpacing: -0.2,
                         ),
-                        child: Icon(
-                          Icons.local_pharmacy,
-                          color: const Color(0xFF10B981),
-                          size: 24,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+
+                      // ── Address (centered, lighter) ──
+                      Text(
+                        pharmacy.adresse ?? 'Adresse indisponible',
+                        style: const TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w400,
                         ),
+                        textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              pharmacy.nom,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                                color: Color(0xFF1F2937),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              pharmacy.adresse ?? 'Adresse indisponible',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 13,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (distance != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      const SizedBox(height: 14),
+
+                      // ── Status + Price badges row ──
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(
-                            Icons.near_me,
-                            size: 14,
-                            color: Color(0xFF10B981),
+                          // Status badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: statusBadgeColor.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  statusIcon,
+                                  size: 14,
+                                  color: statusBadgeColor,
+                                ),
+                                const SizedBox(width: 5),
+                                Text(
+                                  statusLabel,
+                                  style: TextStyle(
+                                    color: statusBadgeColor,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 11,
+                                    letterSpacing: 0.3,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(width: 6),
-                          Text(
-                            _formatDistance(distance),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              color: Color(0xFF047857),
-                              fontSize: 13,
+                          const SizedBox(width: 8),
+                          // Price badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 5,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: const Color(0xFFE2E8F0),
+                                width: 1,
+                              ),
+                            ),
+                            child: Text(
+                              medication.prix > 0
+                                  ? '${medication.prix.toStringAsFixed(0)} FCFA'
+                                  : 'Prix à confirmer',
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w600,
+                                fontSize: 11,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _openDirections(pharmacy),
-                          icon: const Icon(Icons.directions, size: 18),
-                          label: const Text('Itinéraire', style: TextStyle(fontSize: 13)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF10B981),
-                            side: const BorderSide(color: Color(0xFF10B981), width: 1.5),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                      if (pharmacy.telephone != null) ...[
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: () => launchUrl(Uri.parse('tel:${pharmacy.telephone}')),
-                            icon: const Icon(Icons.call, size: 18),
-                            label: const Text('Appeler', style: TextStyle(fontSize: 13)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF10B981),
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                      const SizedBox(height: 16),
+
+                      // ── Action buttons row: Itinéraire + Appeler + WhatsApp FAB ──
+                      Row(
+                        children: [
+                          // Itinéraire button
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => _openDirections(
+                                pharmacy,
+                                accentColor: statusBadgeColor,
                               ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 11,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFB),
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: const Color(0xFFE2E8F0),
+                                    width: 1.2,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.route_rounded,
+                                      size: 16,
+                                      color: statusBadgeColor,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    const Text(
+                                      'Itinéraire',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF334155),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(width: 10),
+                          // Appeler button
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: hasPhone
+                                  ? () => _makePhoneCall(pharmacy)
+                                  : null,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 11,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFB),
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: const Color(0xFFE2E8F0),
+                                    width: 1.2,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.phone,
+                                      size: 16,
+                                      color: hasPhone
+                                          ? const Color(0xFF334155)
+                                          : const Color(0xFFCBD5E1),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Appeler',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: hasPhone
+                                            ? const Color(0xFF334155)
+                                            : const Color(0xFFCBD5E1),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // WhatsApp floating circle button
+                          GestureDetector(
+                            onTap: hasWhatsApp
+                                ? () => _openWhatsAppAvailability(
+                                    pharmacy,
+                                    entry.nom,
+                                  )
+                                : null,
+                            child: Container(
+                              width: 46,
+                              height: 46,
+                              decoration: BoxDecoration(
+                                color: hasWhatsApp
+                                    ? const Color(0xFF25D366)
+                                    : const Color(0xFFE0E0E0),
+                                shape: BoxShape.circle,
+                                boxShadow: hasWhatsApp
+                                    ? [
+                                        BoxShadow(
+                                          color: const Color(
+                                            0xFF25D366,
+                                          ).withOpacity(0.35),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ]
+                                    : [],
+                              ),
+                              child: const Center(
+                                child: FaIcon(
+                                  FontAwesomeIcons.whatsapp,
+                                  color: Colors.white,
+                                  size: 22,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
-                ],
-              ),
+                ),
+
+                // ── Distance badge (top-right floating pill) ──
+                if (distance != null)
+                  Positioned(
+                    top: 14,
+                    right: 14,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF059669),
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF059669).withOpacity(0.3),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        _formatDistance(distance),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         );
@@ -809,7 +1246,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
           child: Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
             child: ExpansionTile(
-              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              tilePadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
               childrenPadding: const EdgeInsets.only(bottom: 12),
               leading: Container(
                 width: 4,
@@ -839,7 +1279,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                     ),
                     const SizedBox(width: 12),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF10B981).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(6),
@@ -859,7 +1302,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               children: [
                 if (_userLocation != null && availabilities.isNotEmpty)
                   Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    margin: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: const Color(0xFFFEF3C7),
@@ -868,11 +1314,15 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                     ),
                     child: Row(
                       children: [
-                        Icon(Icons.info_outline, size: 20, color: Colors.amber[800]),
+                        Icon(
+                          Icons.info_outline,
+                          size: 20,
+                          color: Colors.amber[800],
+                        ),
                         const SizedBox(width: 10),
                         Expanded(
                           child: Text(
-                            "Disponibilité estimée. Contactez la pharmacie pour confirmer.",
+                            "Pharmacies chargees depuis Firebase. Confirmez disponibilite et prix via WhatsApp.",
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.amber[900],
@@ -885,23 +1335,33 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                   ),
                 if (_userLocation == null)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     child: Text(
-                      'Activez la localisation pour filtrer les pharmacies proches.',
+                      'Activez la localisation pour trier les pharmacies par distance.',
                       style: TextStyle(color: Colors.grey[600], fontSize: 13),
                     ),
                   ),
                 if (_userLocation != null && availabilities.isEmpty)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     child: Text(
-                      'Aucune pharmacie dans un rayon de 5 km.',
+                      'Aucune pharmacie Firebase active trouvee.',
                       style: TextStyle(color: Colors.grey[600], fontSize: 13),
                     ),
                   ),
-                if (availabilities.isNotEmpty) _buildAvailabilityTiles(entry, availabilities),
+                if (availabilities.isNotEmpty)
+                  _buildAvailabilityTiles(entry, availabilities),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: SizedBox(
                     width: double.infinity,
                     height: 48,
@@ -964,8 +1424,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
             final source = parts.isNotEmpty ? parts.first : 'Recherche';
             final term = parts.length > 1 ? parts.sublist(1).join(':') : entry;
 
-            final IconData icon =
-                source == 'Scanner' ? Icons.document_scanner_outlined : Icons.history;
+            final IconData icon = source == 'Scanner'
+                ? Icons.document_scanner_outlined
+                : Icons.history;
 
             return Container(
               decoration: BoxDecoration(
@@ -974,7 +1435,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 border: Border.all(color: Colors.grey[200]!),
               ),
               child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
                 leading: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
@@ -1003,7 +1467,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                     onTap: () => HistoryService.instance.remove(entry),
                     child: Padding(
                       padding: const EdgeInsets.all(8),
-                      child: Icon(Icons.close, size: 18, color: Colors.grey[400]),
+                      child: Icon(
+                        Icons.close,
+                        size: 18,
+                        color: Colors.grey[400],
+                      ),
                     ),
                   ),
                 ),
@@ -1029,7 +1497,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
               color: Colors.grey[100],
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.arrow_back_ios_new, color: Colors.black87, size: 18),
+            child: const Icon(
+              Icons.arrow_back_ios_new,
+              color: Colors.black87,
+              size: 18,
+            ),
           ),
           onPressed: () => Navigator.pop(context),
         ),
@@ -1041,12 +1513,18 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 color: Colors.grey[100],
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.account_circle_outlined, color: Colors.black87, size: 22),
+              child: const Icon(
+                Icons.account_circle_outlined,
+                color: Colors.black87,
+                size: 22,
+              ),
             ),
             onPressed: () {
               Navigator.pushReplacement(
                 context,
-                MaterialPageRoute(builder: (context) => const SettingsScreen(userName: '',)),
+                MaterialPageRoute(
+                  builder: (context) => const SettingsScreen(userName: ''),
+                ),
               );
             },
           ),
@@ -1057,7 +1535,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                 color: const Color(0xFF10B981).withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.refresh, color: Color(0xFF10B981), size: 22),
+              child: const Icon(
+                Icons.refresh,
+                color: Color(0xFF10B981),
+                size: 22,
+              ),
             ),
             tooltip: 'Recharger',
             onPressed: () async {
@@ -1119,7 +1601,10 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                               style: const TextStyle(fontSize: 15),
                               decoration: InputDecoration(
                                 hintText: 'Rechercher un médicament...',
-                                hintStyle: TextStyle(color: Colors.grey[400], fontSize: 15),
+                                hintStyle: TextStyle(
+                                  color: Colors.grey[400],
+                                  fontSize: 15,
+                                ),
                                 prefixIcon: Padding(
                                   padding: const EdgeInsets.all(12),
                                   child: Icon(
@@ -1132,7 +1617,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                                     ? Material(
                                         color: Colors.transparent,
                                         child: InkWell(
-                                          borderRadius: BorderRadius.circular(20),
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ),
                                           onTap: _clearSearch,
                                           child: Padding(
                                             padding: const EdgeInsets.all(12),
@@ -1147,14 +1634,21 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                                     : null,
                                 filled: true,
                                 fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 16,
+                                ),
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide(color: Colors.grey[200]!),
+                                  borderSide: BorderSide(
+                                    color: Colors.grey[200]!,
+                                  ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(16),
-                                  borderSide: const BorderSide(color: Color(0xFF10B981), width: 2),
+                                  borderSide: const BorderSide(
+                                    color: Color(0xFF10B981),
+                                    width: 2,
+                                  ),
                                 ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(16),
@@ -1169,7 +1663,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                           child: InkWell(
                             onTap: () {
                               if (_searchController.text.trim().isNotEmpty) {
-                                HistoryService.instance.add(_searchController.text);
+                                HistoryService.instance.add(
+                                  _searchController.text,
+                                );
                                 _applyFilter(_searchController.text);
                                 FocusScope.of(context).unfocus();
                               } else {
@@ -1182,18 +1678,28 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   colors: _isListening
-                                      ? [const Color(0xFFEF4444), const Color(0xFFDC2626)]
+                                      ? [
+                                          const Color(0xFFEF4444),
+                                          const Color(0xFFDC2626),
+                                        ]
                                       : (_searchController.text.isNotEmpty
-                                          ? [const Color(0xFF10B981), const Color(0xFF059669)]
-                                          : [const Color(0xFF10B981), const Color(0xFF059669)]),
+                                            ? [
+                                                const Color(0xFF10B981),
+                                                const Color(0xFF059669),
+                                              ]
+                                            : [
+                                                const Color(0xFF10B981),
+                                                const Color(0xFF059669),
+                                              ]),
                                 ),
                                 borderRadius: BorderRadius.circular(16),
                                 boxShadow: [
                                   BoxShadow(
-                                    color: (_isListening
-                                            ? const Color(0xFFEF4444)
-                                            : const Color(0xFF10B981))
-                                        .withOpacity(0.3),
+                                    color:
+                                        (_isListening
+                                                ? const Color(0xFFEF4444)
+                                                : const Color(0xFF10B981))
+                                            .withOpacity(0.3),
                                     blurRadius: 12,
                                     offset: const Offset(0, 4),
                                   ),
@@ -1203,8 +1709,8 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                                 _isListening
                                     ? Icons.stop_rounded
                                     : (_searchController.text.isNotEmpty
-                                        ? Icons.send_rounded
-                                        : Icons.mic),
+                                          ? Icons.send_rounded
+                                          : Icons.mic),
                                 color: Colors.white,
                                 size: 24,
                               ),
@@ -1238,9 +1744,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                           onTap: () async {
                             final result = await Navigator.push<List<String>>(
                               context,
-                              MaterialPageRoute(builder: (context) => const ScannerPage()),
+                              MaterialPageRoute(
+                                builder: (context) => const ScannerPage(),
+                              ),
                             );
-                            
+
                             // Si des médicaments ont été retournés, les afficher
                             if (result != null && result.isNotEmpty) {
                               final searchText = result.join(', ');
@@ -1253,7 +1761,11 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: const [
-                                Icon(Icons.camera_alt_outlined, color: Colors.white, size: 24),
+                                Icon(
+                                  Icons.camera_alt_outlined,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
                                 SizedBox(width: 12),
                                 Text(
                                   'Scanner une ordonnance',
@@ -1272,7 +1784,9 @@ class _SearchScreenState extends State<SearchScreen> with SingleTickerProviderSt
                     ),
                     const SizedBox(height: 32),
                     Text(
-                      _isSearching ? 'Résultats trouvés' : 'Recherches récentes',
+                      _isSearching
+                          ? 'Résultats trouvés'
+                          : 'Recherches récentes',
                       style: const TextStyle(
                         color: Color(0xFF1F2937),
                         fontSize: 18,

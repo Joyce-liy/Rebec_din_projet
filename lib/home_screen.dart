@@ -313,7 +313,7 @@ class _HomeBodyState extends State<HomeBody> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      "Besoin d'un remède ?",
+                      "Besoin d'un medicament ?",
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 18,

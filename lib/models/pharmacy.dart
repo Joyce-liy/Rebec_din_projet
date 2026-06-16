@@ -3,16 +3,21 @@ import 'package:collection/collection.dart';
 enum StockStatus {
   enStock('en_stock'),
   stockLimite('stock_limite'),
-  rupture('rupture');
+  rupture('rupture'),
+  aConfirmer('a_confirmer');
 
   const StockStatus(this.jsonValue);
 
   final String jsonValue;
 
   static StockStatus fromJson(String value) {
+    final normalized = value.trim().toLowerCase();
+    if (normalized.isEmpty || normalized == 'unknown') {
+      return StockStatus.aConfirmer;
+    }
     return StockStatus.values.firstWhere(
-      (status) => status.jsonValue == value,
-      orElse: () => StockStatus.rupture,
+      (status) => status.jsonValue == normalized,
+      orElse: () => StockStatus.aConfirmer,
     );
   }
 
@@ -24,6 +29,8 @@ enum StockStatus {
         return 'Stock limité';
       case StockStatus.rupture:
         return 'Rupture';
+      case StockStatus.aConfirmer:
+        return 'A confirmer';
     }
   }
 }
@@ -68,6 +75,15 @@ class GeoLocationPoint {
   });
 
   factory GeoLocationPoint.fromJson(Map<String, dynamic> json) {
+    final directLatitude = json['latitude'] ?? json['lat'];
+    final directLongitude = json['longitude'] ?? json['lng'] ?? json['lon'];
+    if (directLatitude is num && directLongitude is num) {
+      return GeoLocationPoint(
+        latitude: directLatitude.toDouble(),
+        longitude: directLongitude.toDouble(),
+      );
+    }
+
     final List<dynamic> coordinates =
         (json['coordinates'] as List<dynamic>?) ?? const [];
     final double longitude = coordinates.isNotEmpty
@@ -77,6 +93,37 @@ class GeoLocationPoint {
         ? (coordinates[1] as num?)?.toDouble() ?? 0
         : 0;
     return GeoLocationPoint(latitude: latitude, longitude: longitude);
+  }
+
+  static GeoLocationPoint? tryParse(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    if (value is GeoLocationPoint) {
+      return value;
+    }
+    if (value is Map<String, dynamic>) {
+      return GeoLocationPoint.fromJson(value);
+    }
+    if (value is Map) {
+      return GeoLocationPoint.fromJson(Map<String, dynamic>.from(value));
+    }
+
+    try {
+      final dynamic dynamicValue = value;
+      final latitude = dynamicValue.latitude;
+      final longitude = dynamicValue.longitude;
+      if (latitude is num && longitude is num) {
+        return GeoLocationPoint(
+          latitude: latitude.toDouble(),
+          longitude: longitude.toDouble(),
+        );
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
   }
 
   final double latitude;
@@ -93,30 +140,42 @@ class Pharmacy {
     required this.localisation,
     required this.horaires,
     required this.medicaments,
+    this.source = 'firestore',
   });
 
   factory Pharmacy.fromJson(Map<String, dynamic> json) {
-    final medicationsJson = json['medicaments'] as List<dynamic>? ?? [];
-    final localisationJson = json['localisation'] as Map<String, dynamic>?;
+    final medicationsJson =
+        (json['medicaments'] ?? json['medications']) as List<dynamic>? ?? [];
     return Pharmacy(
       id: _parseId(json['id']),
-      nom: json['nom'] as String? ?? '',
-      adresse: json['adresse'] as String?,
-      telephone: json['telephone'] as String?,
-      whatsapp: json['whatsapp'] as String?,
-      localisation: localisationJson != null
-          ? GeoLocationPoint.fromJson(localisationJson)
-          : null,
-      horaires: json['horaires'] as String?,
+      nom: _parseNullableString(json['nom'] ?? json['name']) ?? '',
+      adresse: _parseNullableString(json['adresse'] ?? json['address']),
+      telephone: _parseNullableString(json['telephone'] ?? json['phone']),
+      whatsapp: _parseNullableString(json['whatsapp']),
+      localisation: GeoLocationPoint.tryParse(
+        json['localisation'] ?? json['location'],
+      ),
+      horaires: _parseNullableString(json['horaires']) ??
+          (json['is_active'] == false ? 'Fermee' : 'Ouvert'),
       medicaments: medicationsJson
+          .whereType<Map>()
           .map((item) => PharmacyMedication.fromJson(
-              item as Map<String, dynamic>))
+              Map<String, dynamic>.from(item)))
           .toList(),
+      source: json['source'] as String? ?? 'firestore',
     );
   }
 
   static String _parseId(dynamic value) {
     return value?.toString() ?? '';
+  }
+
+  static String? _parseNullableString(dynamic value) {
+    final text = value?.toString().trim();
+    if (text == null || text.isEmpty) {
+      return null;
+    }
+    return text;
   }
 
   final String id;
@@ -127,6 +186,7 @@ class Pharmacy {
   final GeoLocationPoint? localisation;
   final String? horaires;
   final List<PharmacyMedication> medicaments;
+  final String source; // 'firestore' or 'osm'
 
   PharmacyMedication? medicationById(String id) =>
       medicaments.firstWhereOrNull((med) => med.id == id);

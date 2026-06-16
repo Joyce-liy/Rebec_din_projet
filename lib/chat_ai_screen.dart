@@ -7,8 +7,10 @@ import 'package:pharma/models/pharmacy.dart';
 import 'package:pharma/services/location_service.dart';
 import 'package:pharma/services/pharmacy_service.dart';
 import 'package:pharma/services/gemini_service.dart';
+import 'package:pharma/services/whatsapp_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
 import 'package:pharma/theme/app_theme.dart';
+import 'package:pharma/map/in_app_navigation_page.dart';
 
 // ===========================================================
 // ÉNUMÉRATIONS & MODÈLES INTERNES
@@ -19,6 +21,7 @@ enum _ConversationStage {
   awaitingAllergyInfo,
   awaitingPharmacyChoice,
   awaitingActionChoice,
+  awaitingWhatsAppReply,
 
   /// FIX #1: nouveau état — l'utilisateur a demandé des conseils directs
   /// sur un médicament sans passer par la recherche pharmacie.
@@ -69,6 +72,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   final PharmacyService _pharmacyService = PharmacyService();
   final LocationService _locationService = LocationService();
   final GeminiService _geminiService = GeminiService();
+  final WhatsAppService _whatsAppService = WhatsAppService();
 
   // ---- UI ----
   final TextEditingController _inputController = TextEditingController();
@@ -88,6 +92,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   _PharmacyOption? _selectedOption;
   String? _lastMedicationQuery;
   int? _recommendedIndex;
+
+  // --- Position utilisateur (dynamic pour compatibilité
+  dynamic _userLocation;
 
   // ---- Consultation symptomatique ----
   _ConsultationData? _currentConsultation;
@@ -212,6 +219,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
         lower.contains('officine') ||
         lower.contains('ou trouver') ||
         lower.contains('où trouver');
+
     final hasProximity = lower.contains('proche') ||
         lower.contains('plus proche') ||
         lower.contains('autour') ||
@@ -221,6 +229,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
         lower.contains('ou est') ||
         lower.contains('où est') ||
         lower.contains('trouver');
+
     return hasLocation || hasProximity;
   }
 
@@ -458,7 +467,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       buf.writeln("${i + 1}. ${opt.pharmacy.nom}$km$min");
     }
 
-    buf.write("\nTapez le numéro pour lancer l'itinéraire.");
+    buf.write("\nTapez le numero pour choisir une pharmacie.");
 
     await _addAIMessage(buf.toString());
     setState(() => _stage = _ConversationStage.awaitingPharmacyChoice);
@@ -544,8 +553,8 @@ class _ChatAIScreenState extends State<ChatAIScreen>
 
     final buf = StringBuffer();
     buf.writeln(
-      "Je ne peux pas vérifier le stock en ligne, mais voici les pharmacies "
-      "les plus proches pour $medicationName :\n",
+      "Voici les pharmacies en ligne enregistrees depuis Pharm Admin "
+      "pour $medicationName :\n",
     );
 
     if (_recommendedIndex != null) {
@@ -579,18 +588,168 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   // ===========================================================
 
   Future<void> _launchNavigation() async {
-    final point = _selectedOption?.pharmacy.localisation;
-    if (point == null) return;
+    final pharmacy = _selectedOption?.pharmacy;
+    if (pharmacy == null) {
+      await _addAIMessage("Veuillez d'abord choisir une pharmacie.");
+      return;
+    }
 
-    final uri = Uri.parse(
-      "https://www.google.com/maps/dir/?api=1"
-      "&destination=${point.latitude},${point.longitude}"
-      "&travelmode=driving",
+    setState(() => _isProcessing = true);
+
+    // Obtenir position utilisateur via le service (compatible GeoPoint/Map)
+    final dynamic location = await _locationService.tryGetCurrentPosition();
+    if (location == null) {
+      setState(() => _isProcessing = false);
+      await _addAIMessage("Position utilisateur introuvable. Activez la localisation et réessayez.");
+      return;
+    }
+
+    double startLat = 0.0;
+    double startLng = 0.0;
+
+    try {
+      final a = (location as dynamic).latitude;
+      final b = (location as dynamic).longitude;
+      if (a is num) startLat = a.toDouble();
+      if (b is num) startLng = b.toDouble();
+    } catch (_) {}
+    if (startLat == 0.0 && startLng == 0.0) {
+      try {
+        final a = (location as dynamic)['latitude'];
+        final b = (location as dynamic)['longitude'];
+        if (a is num) startLat = a.toDouble();
+        if (b is num) startLng = b.toDouble();
+      } catch (_) {}
+    }
+
+    // final destLat = Pharmacy.extractLat((pharmacy as dynamic).localisation);
+    // final destLng = Pharmacy.extractLng((pharmacy as dynamic).localisation);
+
+    // Extraire les coordonnées de la pharmacie de façon robuste
+    final dynamic loc = (pharmacy as dynamic).localisation;
+    double destLat = 0.0;
+    double destLng = 0.0;
+    if (loc != null) {
+      try {
+        final a = (loc as dynamic).latitude;
+        final b = (loc as dynamic).longitude;
+        if (a is num) destLat = a.toDouble();
+        if (b is num) destLng = b.toDouble();
+      } catch (_) {}
+      if (destLat == 0.0 && destLng == 0.0) {
+        try {
+          final a = loc['latitude'] ?? loc['lat'];
+          final b = loc['longitude'] ?? loc['lng'] ?? loc['lon'];
+          if (a is num) destLat = a.toDouble();
+          if (b is num) destLng = b.toDouble();
+        } catch (_) {}
+      }
+    }
+
+    if (destLat == 0.0 || destLng == 0.0) {
+      setState(() => _isProcessing = false);
+      await _addAIMessage("Coordonnées de la pharmacie indisponibles.");
+      return;
+    }
+
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => InAppNavigationPage(
+        startLat: startLat,
+        startLng: startLng,
+        destLat: destLat,
+        destLng: destLng,
+        pharmacyName: (pharmacy as dynamic).nom?.toString() ?? '',
+      ),
+    ));
+
+    setState(() => _isProcessing = false);
+    await _addAIMessage("Itinéraire ouvert dans l'application vers ${(pharmacy as dynamic).nom}.");
+  }
+
+  String? _primaryWhatsAppNumber(Pharmacy pharmacy) {
+    final whatsapp = pharmacy.whatsapp?.trim();
+    if (whatsapp != null && whatsapp.isNotEmpty) {
+      return whatsapp;
+    }
+    final phone = pharmacy.telephone?.trim();
+    if (phone != null && phone.isNotEmpty) {
+      return phone;
+    }
+    return null;
+  }
+
+  Future<void> _launchPhoneCall() async {
+    final pharmacy = _selectedOption?.pharmacy;
+    final phone = pharmacy?.telephone?.trim();
+    if (pharmacy == null || phone == null || phone.isEmpty) {
+      await _addAIMessage("Le numero de telephone de cette pharmacie est indisponible.");
+      return;
+    }
+
+    final launched = await launchUrl(Uri(scheme: 'tel', path: phone));
+    if (launched) {
+      await _addAIMessage("Appel lance vers ${pharmacy.nom}.");
+    } else {
+      await _addAIMessage("Impossible de lancer l'appel pour le moment.");
+    }
+  }
+
+  Future<void> _launchWhatsAppAvailabilityRequest() async {
+    final pharmacy = _selectedOption?.pharmacy;
+    if (pharmacy == null) {
+      await _addAIMessage("Veuillez d'abord choisir une pharmacie.");
+      return;
+    }
+
+    final phone = _primaryWhatsAppNumber(pharmacy);
+    if (phone == null) {
+      await _addAIMessage("Le contact WhatsApp de cette pharmacie est indisponible.");
+      return;
+    }
+
+    final medication = _lastMedicationQuery?.trim().isNotEmpty == true
+        ? _lastMedicationQuery!.trim()
+        : 'le medicament recherche';
+
+    final launched = await _whatsAppService.openAvailabilityRequest(
+      phoneNumber: phone,
+      pharmacyName: pharmacy.nom,
+      medicationName: medication,
     );
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
+
+    if (!launched) {
+      await _addAIMessage("Impossible d'ouvrir WhatsApp pour le moment.");
+      return;
+    }
+
     await _addAIMessage(
-      "🗺️ Itinéraire lancé vers ${_selectedOption!.pharmacy.nom}. Bon courage !",
+      "J'ai ouvert WhatsApp avec un message pret a envoyer a ${pharmacy.nom}. "
+      "Quand la pharmacie repond, copiez sa reponse ici et je l'interpreterai.",
     );
+    setState(() => _stage = _ConversationStage.awaitingWhatsAppReply);
+  }
+
+  Future<void> _interpretWhatsAppReply(String reply) async {
+    final pharmacy = _selectedOption?.pharmacy;
+    final medication = _lastMedicationQuery?.trim().isNotEmpty == true
+        ? _lastMedicationQuery!.trim()
+        : 'le medicament recherche';
+
+    if (pharmacy == null) {
+      setState(() => _stage = _ConversationStage.idle);
+      await _addAIMessage("Je n'ai plus la pharmacie selectionnee. Relancez la recherche.");
+      return;
+    }
+
+    final interpretation = _whatsAppService.interpretPharmacyReply(
+      reply,
+      pharmacyName: pharmacy.nom,
+      medicationName: medication,
+    );
+
+    await _addAIMessage(interpretation.summary);
+    setState(() => _stage = _ConversationStage.idle);
+    await _addAIMessage("Vous pouvez rechercher un autre medicament si besoin.");
   }
 
   Future<void> _giveBasicAdvice() async {
@@ -666,6 +825,11 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     _inputController.clear();
     await _addUserMessage(input);
 
+    if (_stage == _ConversationStage.awaitingWhatsAppReply) {
+      await _interpretWhatsAppReply(input);
+      return;
+    }
+
     // ─── 1. Salutation ───────────────────────────────────────
     if (_isGreeting(input)) {
       await _addAIMessage(
@@ -698,9 +862,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
         await _addAIMessage(
           "Vous avez sélectionné ${_selectedOption!.pharmacy.nom}.\n\n"
           "Que souhaitez-vous faire ?\n"
-          "1. 🗺️ Lancer l'itinéraire\n"
-          "2. 💊 Conseils sur le médicament\n"
-          "3. 🔍 Rechercher un autre médicament",
+          "1. Lancer l'itineraire\n"
+          "2. Appeler la pharmacie\n"
+          "3. WhatsApp disponibilite et prix",
         );
         setState(() => _stage = _ConversationStage.awaitingActionChoice);
       } else {
@@ -715,7 +879,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     // L'utilisateur vient de taper le nom du médicament qu'on lui a demandé
     if (_stage == _ConversationStage.awaitingDirectAdviceConfirm) {
       _lastMedicationQuery = input;
-      setState(() => _stage = _ConversationStage.idle);
+      setState(() => _ConversationStage.idle);
       await _handleDirectAdviceRequest(input);
       return;
     }
@@ -728,19 +892,11 @@ class _ChatAIScreenState extends State<ChatAIScreen>
         setState(() => _stage = _ConversationStage.idle);
         await _addAIMessage("Quel autre médicament puis-je vous aider à trouver ?");
       } else if (choice == 2) {
-        // On reste en idle avant d'appeler _giveBasicAdvice.
-        // Si le médicament est connu → conseils directs, puis suivi.
-        // Si le médicament est inconnu → _giveBasicAdvice passe en
-        // awaitingDirectAdviceConfirm et on N'affiche PAS "autre chose ?".
         setState(() => _stage = _ConversationStage.idle);
-        await _giveBasicAdvice();
-        // Le message de suivi est désormais dans _giveBasicAdvice lui-même
-        // pour garantir l'ordre correct après l'appel async à Gemini.
+        await _launchPhoneCall();
+        await _addAIMessage("Quel autre medicament puis-je vous aider a trouver ?");
       } else if (choice == 3) {
-        _selectedOption = null;
-        _currentOptions = [];
-        setState(() => _stage = _ConversationStage.idle);
-        await _addAIMessage("Très bien. Quel médicament recherchez-vous ?");
+        await _launchWhatsAppAvailabilityRequest();
       } else {
         await _addAIMessage("Veuillez répondre par 1, 2 ou 3.");
       }
@@ -877,6 +1033,13 @@ class _ChatAIScreenState extends State<ChatAIScreen>
               const Color(0xFFE3F2FD),
               const Color(0xFF1976D2),
               Icons.touch_app_outlined,
+            )
+          else if (_stage == _ConversationStage.awaitingWhatsAppReply)
+            _buildContextPill(
+              "Collez ici la reponse WhatsApp de la pharmacie",
+              const Color(0xFFE8F5E9),
+              const Color(0xFF128C7E),
+              Icons.chat_outlined,
             ),
 
           // Messages
@@ -1264,7 +1427,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
                         ? "REBEC-DIN réfléchit..."
                         : _stage == _ConversationStage.awaitingAllergyInfo
                             ? "Vos allergies et médicaments du jour..."
-                            : "Symptômes, médicament, posologie...",
+                            : _stage == _ConversationStage.awaitingWhatsAppReply
+                                ? "Collez la reponse WhatsApp..."
+                                : "Symptômes, médicament, posologie...",
                     hintStyle: TextStyle(
                       color: Colors.grey.shade400,
                       fontSize: 14,
