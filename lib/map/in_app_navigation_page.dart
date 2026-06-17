@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
@@ -14,7 +15,7 @@ import 'package:pharma/map/custom_map_theme.dart';
 // ─────────────────────────────────────────────
 class _NavStep {
   final String instruction;
-  final String maneuverType;   // 'turn', 'depart', 'arrive', 'roundabout', etc.
+  final String maneuverType;     // 'turn', 'depart', 'arrive', 'roundabout', etc.
   final String maneuverModifier; // 'left', 'right', 'straight', 'slight left', etc.
   final double distanceMeters;
   final double durationSeconds;
@@ -96,7 +97,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
   double _currentBearing = 0.0;
   StreamSubscription<Position>? _positionSub;
   bool _hasGps = false;
-  bool _followUser = false;          // true while navigating = camera locks on user
+  bool _followUser = false; // true while navigating = camera locks on user
 
   // ── Navigation state ─────────────────────────
   _NavMode _mode = _NavMode.overview;
@@ -112,6 +113,10 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
   static const double _offRouteThresholdMeters = 50.0;
   static const double _stepReachedThresholdMeters = 25.0;
   static const double _arrivalThresholdMeters = 30.0;
+
+  // ── TTS ──────────────────────────────────────
+  final FlutterTts _tts = FlutterTts();
+  int _lastSpokenStepIndex = -1;
 
   // ── Theme ────────────────────────────────────
   Color get _accent => widget.accentColor ?? const Color(0xFF059669);
@@ -142,17 +147,76 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
       duration: const Duration(milliseconds: 350),
     );
 
+    _initTts();
     _fetchRoute();
     _startPositionStream();
   }
 
   @override
   void dispose() {
+    _tts.stop();
     _positionSub?.cancel();
     _pulseAnim.dispose();
     _bannerAnim.dispose();
     _mapController.dispose();
     super.dispose();
+  }
+
+  // ─────────────────────────────────────────────
+  // TTS
+  // ─────────────────────────────────────────────
+  Future<void> _initTts() async {
+    await _tts.setLanguage('fr-FR');
+    await _tts.setSpeechRate(0.50);
+    await _tts.setVolume(1.0);
+    await _tts.setPitch(1.0);
+  }
+
+  Future<void> _speak(String text) async {
+    if (text.trim().isEmpty) return;
+    await _tts.stop();
+    await _tts.speak(text);
+  }
+
+  String _buildVoiceInstruction(_NavStep step, {double? distanceMeters}) {
+    final dist = distanceMeters ?? step.distanceMeters;
+    final distStr = dist < 1000
+        ? 'dans ${dist.round()} mètres'
+        : 'dans ${(dist / 1000).toStringAsFixed(1)} kilomètres';
+
+    if (step.maneuverType == 'arrive') {
+      return 'Vous êtes arrivé à destination : $_pharmacyName';
+    }
+    if (step.maneuverType == 'depart') {
+      return 'Départ. Continuez tout droit $distStr.';
+    }
+    if (step.maneuverType == 'roundabout' ||
+        step.maneuverType == 'rotary') {
+      return 'Prenez le rond-point $distStr.';
+    }
+
+    final road = step.instruction.trim().isNotEmpty
+        ? 'sur ${step.instruction}'
+        : '';
+
+    switch (step.maneuverModifier) {
+      case 'left':
+        return 'Tournez à gauche $road $distStr.';
+      case 'right':
+        return 'Tournez à droite $road $distStr.';
+      case 'sharp left':
+        return 'Virez à gauche $road $distStr.';
+      case 'sharp right':
+        return 'Virez à droite $road $distStr.';
+      case 'slight left':
+        return 'Légèrement à gauche $road $distStr.';
+      case 'slight right':
+        return 'Légèrement à droite $road $distStr.';
+      case 'uturn':
+        return 'Faites demi-tour $road $distStr.';
+      default:
+        return 'Continuez tout droit $road $distStr.';
+    }
   }
 
   // ─────────────────────────────────────────────
@@ -315,39 +379,59 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
   void _updateNavigation(LatLng pos) {
     if (_steps.isEmpty) return;
 
-    // Arrival check
+    // ── Arrivée ───────────────────────────────
     final distToDest = _haversine(pos, _destination);
     if (distToDest <= _arrivalThresholdMeters) {
       setState(() { _mode = _NavMode.arrived; });
       _bannerAnim.forward();
       _positionSub?.cancel();
+      _speak('Vous êtes arrivé à destination : $_pharmacyName');
       return;
     }
 
-    // Advance step if close enough to next waypoint
+    // ── Avancement d'étape ────────────────────
     if (_currentStepIndex < _steps.length - 1) {
       final nextStep = _steps[_currentStepIndex + 1];
       final distToNext = _haversine(pos, nextStep.location);
       _distanceToNextStep = distToNext;
+
       if (distToNext <= _stepReachedThresholdMeters) {
         setState(() { _currentStepIndex++; });
         _bannerAnim
           ..reset()
           ..forward();
+
+        // Annonce vocale de la nouvelle étape
+        if (_currentStepIndex != _lastSpokenStepIndex) {
+          _lastSpokenStepIndex = _currentStepIndex;
+          _speak(_buildVoiceInstruction(_steps[_currentStepIndex]));
+        }
+      } else {
+        // Pré-annonce à 150 m de la prochaine étape
+        if (distToNext <= 150 &&
+            distToNext > _stepReachedThresholdMeters &&
+            _currentStepIndex + 1 != _lastSpokenStepIndex) {
+          _lastSpokenStepIndex = _currentStepIndex + 1;
+          _speak(_buildVoiceInstruction(
+            nextStep,
+            distanceMeters: distToNext,
+          ));
+        }
       }
     }
 
-    // Recalculate if off-route
+    // ── Recalcul hors-route ───────────────────
     if (!_recalculating && !_fallbackRoute) {
       final distToRoute = _distanceToPolyline(pos, _remainingPoints);
       if (distToRoute > _offRouteThresholdMeters) {
         setState(() { _recalculating = true; });
+        _speak('Recalcul de l\'itinéraire en cours.');
         _fetchRoute(from: pos);
         return;
       }
     }
 
-    // Update remaining distance/duration from current step onwards
+    // ── Mise à jour distance/durée restante ───
     double remaining = 0;
     double remainingDur = 0;
     for (int i = _currentStepIndex; i < _steps.length; i++) {
@@ -382,14 +466,22 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
       _mode = _NavMode.navigating;
       _followUser = true;
       _currentStepIndex = 0;
+      _lastSpokenStepIndex = -1;
     });
     _bannerAnim.forward();
     if (_mapReady) {
       _mapController.moveAndRotate(_currentPosition, 17.5, -_currentBearing);
     }
+
+    // Annonce vocale de départ
+    if (_steps.isNotEmpty) {
+      _speak(_buildVoiceInstruction(_steps[0]));
+      _lastSpokenStepIndex = 0;
+    }
   }
 
   void _stopNavigation() {
+    _tts.stop();
     setState(() {
       _mode = _NavMode.overview;
       _followUser = false;
@@ -536,7 +628,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                 maxZoom: 19,
                 tileProvider: NetworkTileProvider(),
               ),
-              // Route polyline (greyed remaining vs travelled)
+              // Route polyline
               if (_routePoints.isNotEmpty)
                 PolylineLayer(
                   polylines: [
@@ -595,7 +687,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
             ),
           ),
 
-          // ── Top bar (overview) or maneuver banner (navigating) ──
+          // ── Top bar (overview) ou maneuver banner (navigating) ──
           if (_mode == _NavMode.overview || _mode == _NavMode.arrived)
             _buildTopBar(context)
           else
@@ -739,13 +831,11 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
           children: [
             Container(
               constraints: const BoxConstraints(maxWidth: 130),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
-                border:
-                    Border.all(color: _accent.withOpacity(0.25), width: 1.5),
+                border: Border.all(color: _accent.withOpacity(0.25), width: 1.5),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.12),
@@ -879,19 +969,16 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
             const SizedBox(width: 8),
             if (_fallbackRoute)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                 decoration: BoxDecoration(
                   color: _warnColor.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(7),
-                  border:
-                      Border.all(color: _warnColor.withOpacity(0.30)),
+                  border: Border.all(color: _warnColor.withOpacity(0.30)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.warning_amber_rounded,
-                        size: 14, color: _warnColor),
+                    Icon(Icons.warning_amber_rounded, size: 14, color: _warnColor),
                     const SizedBox(width: 4),
                     Text(
                       'Tracé direct',
@@ -917,8 +1004,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
     final step = _steps.isNotEmpty && _currentStepIndex < _steps.length
         ? _steps[_currentStepIndex]
         : null;
-    final nextStep = _steps.isNotEmpty &&
-            _currentStepIndex + 1 < _steps.length
+    final nextStep = _steps.isNotEmpty && _currentStepIndex + 1 < _steps.length
         ? _steps[_currentStepIndex + 1]
         : null;
 
@@ -941,8 +1027,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
             children: [
               // Main maneuver card
               Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1E293B),
                   borderRadius: BorderRadius.circular(14),
@@ -965,9 +1050,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Icon(
-                        step != null
-                            ? _maneuverIcon(step)
-                            : Icons.navigation_rounded,
+                        step != null ? _maneuverIcon(step) : Icons.navigation_rounded,
                         color: Colors.white,
                         size: 32,
                       ),
@@ -978,7 +1061,6 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          // Distance to next maneuver
                           Text(
                             _formatDist(_distanceToNextStep > 0
                                 ? _distanceToNextStep
@@ -992,9 +1074,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            step != null
-                                ? _maneuverLabel(step)
-                                : 'Continuer',
+                            step != null ? _maneuverLabel(step) : 'Continuer',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -1022,8 +1102,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
               if (nextStep != null) ...[
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFF334155).withOpacity(0.92),
                     borderRadius: BorderRadius.circular(8),
@@ -1038,8 +1117,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                             fontSize: 12,
                             fontWeight: FontWeight.w600),
                       ),
-                      Icon(_maneuverIcon(nextStep),
-                          color: Colors.white70, size: 16),
+                      Icon(_maneuverIcon(nextStep), color: Colors.white70, size: 16),
                       const SizedBox(width: 4),
                       Flexible(
                         child: Text(
@@ -1107,7 +1185,6 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
   // ─────────────────────────────────────────────
   Widget _buildBottomPanel(BuildContext context) {
     final bottom = MediaQuery.of(context).padding.bottom;
-
     if (_mode == _NavMode.navigating) {
       return _buildNavigatingPanel(context, bottom);
     }
@@ -1145,8 +1222,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                     color: _accent.withOpacity(0.10),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child:
-                      Icon(Icons.local_pharmacy_rounded, color: _accent, size: 24),
+                  child: Icon(Icons.local_pharmacy_rounded, color: _accent, size: 24),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1172,9 +1248,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: _fallbackRoute
-                              ? _warnColor
-                              : const Color(0xFF64748B),
+                          color: _fallbackRoute ? _warnColor : const Color(0xFF64748B),
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -1227,9 +1301,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                 ),
                 child: Column(
                   children: [
-                    for (int i = 0;
-                        i < _steps.length && i < 3;
-                        i++) ...[
+                    for (int i = 0; i < _steps.length && i < 3; i++) ...[
                       if (i > 0)
                         const Divider(height: 1, color: Color(0xFFE2E8F0)),
                       Padding(
@@ -1284,7 +1356,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                 ),
               ),
             const SizedBox(height: 14),
-            // START NAVIGATION button (big, green, Google-Maps-style)
+            // START NAVIGATION button
             SizedBox(
               width: double.infinity,
               height: 52,
@@ -1293,14 +1365,12 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                 icon: const Icon(Icons.navigation_rounded, size: 22),
                 label: const Text(
                   'Démarrer la navigation',
-                  style: TextStyle(
-                      fontSize: 16, fontWeight: FontWeight.w800),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _accent,
                   foregroundColor: Colors.white,
-                  disabledBackgroundColor:
-                      _accent.withOpacity(0.40),
+                  disabledBackgroundColor: _accent.withOpacity(0.40),
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
@@ -1423,11 +1493,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                     color: _accent.withOpacity(0.10),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(
-                    Icons.check_circle_rounded,
-                    color: _accent,
-                    size: 40,
-                  ),
+                  child: Icon(Icons.check_circle_rounded, color: _accent, size: 40),
                 ),
                 const SizedBox(height: 16),
                 const Text(
@@ -1466,8 +1532,7 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                     ),
                     child: const Text(
                       'Terminer',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w800),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
                     ),
                   ),
                 ),
