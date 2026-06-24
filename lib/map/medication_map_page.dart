@@ -28,6 +28,7 @@ class MedicationMapPage extends StatefulWidget {
 class _MedicationMapPageState extends State<MedicationMapPage>
     with SingleTickerProviderStateMixin {
   static const double _radiusMeters = 5000;
+  static const int _pharmacyLimit = 5;
 
   static const String _cartoVoyagerUrl =
       'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png';
@@ -134,7 +135,7 @@ class _MedicationMapPageState extends State<MedicationMapPage>
   List<MedicationAvailability> _availabilitiesWithinRadius() {
     final dynamic location = _userLocation;
     if (location == null) {
-      return List<MedicationAvailability>.from(widget.entry.availabilities);
+      return [];
     }
 
     final List<MedicationAvailability> filtered = widget.entry.availabilities
@@ -173,7 +174,7 @@ class _MedicationMapPageState extends State<MedicationMapPage>
       return distanceA.compareTo(distanceB);
     });
 
-    return filtered;
+    return filtered.take(_pharmacyLimit).toList();
   }
 
   Color _statusColor(StockStatus status) {

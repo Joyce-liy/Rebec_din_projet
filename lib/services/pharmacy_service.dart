@@ -8,6 +8,9 @@ import 'package:pharma/services/location_service.dart';
 import 'package:http/http.dart' as http;
 
 class PharmacyService {
+  static const int nearbyRadiusMeters = 5000;
+  static const int nearbyPharmacyLimit = 5;
+
   final LocationService _locationService = LocationService();
 
   PharmacyService._internal();
@@ -89,13 +92,16 @@ class PharmacyService {
     _catalog = null;
   }
 
+  /// Recherche simple dans le catalogue local (sans filtre géographique).
+  /// Retourne uniquement les médicaments qui existent réellement en base.
   Future<List<MedicationCatalogEntry>> searchMedication(String query) async {
     final catalog = await fetchCatalog();
-    if (query.isEmpty) {
+    final lower = query.toLowerCase().trim();
+
+    if (lower.isEmpty) {
       return catalog;
     }
 
-    final lower = query.toLowerCase();
     return catalog
         .where((entry) =>
             entry.nom.toLowerCase().contains(lower) ||
@@ -185,7 +191,6 @@ out center;
           lat = (element['lat'] as num?)?.toDouble();
           lon = (element['lon'] as num?)?.toDouble();
         } else {
-          // For ways, use the center coordinates
           final center = element['center'] as Map<String, dynamic>?;
           lat = (center?['lat'] as num?)?.toDouble();
           lon = (center?['lon'] as num?)?.toDouble();
@@ -241,7 +246,6 @@ out center;
   }
 
   /// Déduplique les pharmacies Firestore et OSM (< 50m = même pharmacie).
-  /// Garde la version Firestore quand doublon car elle a plus de données.
   List<Pharmacy> _deduplicatePharmacies(
     List<Pharmacy> firestorePharmacies,
     List<Pharmacy> osmPharmacies,
@@ -281,8 +285,8 @@ out center;
   Future<List<Pharmacy>> fetchNearbyPharmacies({
     required double latitude,
     required double longitude,
-    int radius = 5000,
-    int limit = 20,
+    int radius = nearbyRadiusMeters,
+    int limit = nearbyPharmacyLimit,
   }) async {
     final results = await Future.wait([
       fetchPharmacies(),
@@ -318,11 +322,10 @@ out center;
       return distance <= radius;
     }).toList();
 
-    final finalResults = withinRadius.isNotEmpty ? withinRadius : sorted;
     if (limit <= 0) {
-      return finalResults;
+      return withinRadius;
     }
-    return finalResults.take(limit).toList();
+    return withinRadius.take(limit).toList();
   }
 
   Future<int?> estimateDrivingTravelTimeSeconds({
@@ -361,68 +364,242 @@ out center;
     }
   }
 
+  /// Recherche en temps réel des médicaments dans les pharmacies proches.
+  ///
+  /// Règles :
+  /// - Requête vide ou 1 caractère → liste vide (évite les faux positifs).
+  /// - 2+ caractères → recherche dans les stocks Firestore réels.
+  /// - Les pharmacies sans GPS sont incluses (elles ont peut-être le médicament).
+  /// - Si aucune pharmacie proche géolocalisée, fallback sur toute la base.
+  /// - Aucune fausse entrée "A confirmer" générée.
   Future<List<MedicationCatalogEntry>> searchMedicationRealTime(
     String query, {
     required double latitude,
     required double longitude,
-    int radius = 5000,
+    int radius = nearbyRadiusMeters,
   }) async {
     final cleanQuery = query.trim();
-    if (cleanQuery.isEmpty) {
+
+    // 1 seul caractère ou vide → pas de résultat pour éviter les faux positifs
+    if (cleanQuery.length < 2) {
       return [];
     }
 
-    final pharmacies = await fetchNearbyPharmacies(
+    final allFirestorePharmacies = await fetchPharmacies();
+
+    // Pharmacies avec coordonnées GPS → filtrées par rayon
+    final pharmaciesWithLocation =
+        allFirestorePharmacies.where((p) => p.localisation != null).toList();
+
+    final nearbyGeolocated = _sortByDistance(
+      pharmaciesWithLocation,
       latitude: latitude,
       longitude: longitude,
-      radius: radius,
-      limit: 0,
-    );
+    ).where((pharmacy) {
+      final point = pharmacy.localisation!;
+      final distance = _calculateDistance(
+        latitude,
+        longitude,
+        point.latitude,
+        point.longitude,
+      );
+      return distance <= radius;
+    }).take(nearbyPharmacyLimit).toList();
 
-    if (pharmacies.isEmpty) {
+    // Pharmacies sans GPS → toujours incluses (stocks réels mais non géolocalisées)
+    final pharmaciesWithoutLocation =
+        allFirestorePharmacies.where((p) => p.localisation == null).toList();
+
+    // Si aucune pharmacie proche géolocalisée, on cherche dans toute la base
+    final List<Pharmacy> pharmaciesToSearch = nearbyGeolocated.isNotEmpty
+        ? [...nearbyGeolocated, ...pharmaciesWithoutLocation]
+        : allFirestorePharmacies;
+
+    if (pharmaciesToSearch.isEmpty) {
       return [];
     }
 
-    final availabilities = pharmacies.map((pharmacy) {
-      final medication = _medicationForSearch(pharmacy, cleanQuery);
-      return MedicationAvailability(
-        pharmacy: pharmacy,
-        medication: medication,
-      );
-    }).toList();
+    final Map<String, _CatalogAccumulator> accumulator = {};
 
-    return [
-      MedicationCatalogEntry(
-        id: 'firebase_search_${cleanQuery.toLowerCase()}',
-        nom: cleanQuery,
-        dosage: 'Disponibilite et prix a confirmer',
-        availabilities: availabilities,
-      ),
-    ];
-  }
+    for (final pharmacy in pharmaciesToSearch) {
+      for (final medication in pharmacy.medicaments) {
+        final normalizedName   = _normalize(medication.nom);
+        final normalizedDosage = _normalize(medication.dosage);
+        final normalizedQuery  = _normalize(cleanQuery);
 
-  PharmacyMedication _medicationForSearch(Pharmacy pharmacy, String query) {
-    final lowerQuery = query.toLowerCase();
-    for (final medication in pharmacy.medicaments) {
-      final lowerName = medication.nom.toLowerCase();
-      if (lowerName == lowerQuery || lowerName.contains(lowerQuery)) {
-        return medication;
+        // Correspondance : contient la query entière OU tous les mots de la query
+        final bool matches = normalizedName.contains(normalizedQuery) ||
+            normalizedDosage.contains(normalizedQuery) ||
+            normalizedQuery.split(' ').where((w) => w.isNotEmpty).every(
+                  (word) =>
+                      normalizedName.contains(word) ||
+                      normalizedDosage.contains(word),
+                );
+
+        if (!matches) continue;
+
+        final String key = medication.id.isNotEmpty
+            ? medication.id
+            : '${medication.nom}_${medication.dosage}'.toLowerCase();
+
+        accumulator
+            .putIfAbsent(
+              key,
+              () => _CatalogAccumulator(
+                id: medication.id.isNotEmpty ? medication.id : key,
+                nom: medication.nom,
+                dosage: medication.dosage,
+              ),
+            )
+            .availabilities
+            .add(MedicationAvailability(
+              pharmacy: pharmacy,
+              medication: medication,
+            ));
       }
     }
 
-    return PharmacyMedication(
-      id: '${query.toLowerCase()}_${pharmacy.id}',
-      nom: query,
-      dosage: 'A confirmer',
-      status: StockStatus.aConfirmer,
-      quantite: 0,
-      prix: 0,
-      lastUpdate: DateTime.now(),
+    if (accumulator.isEmpty) {
+      return [];
+    }
+
+    return accumulator.values
+        .map((e) => e.toEntry())
+        .toList()
+      ..sort((a, b) => a.nom.compareTo(b.nom));
+  }
+
+  /// Normalise une chaîne pour la comparaison : minuscules + suppression des accents.
+  String _normalize(String input) {
+    const withAccents    = 'àáâãäåæçèéêëìíîïðñòóôõöùúûüýÿ';
+    const withoutAccents = 'aaaaaaaceeeeiiiiðnoooooouuuuyy';
+    var result = input.toLowerCase().trim();
+    for (var i = 0; i < withAccents.length; i++) {
+      result = result.replaceAll(withAccents[i], withoutAccents[i]);
+    }
+    return result;
+  }
+
+  /// Recherche plusieurs médicaments en une seule passe et retourne
+  /// les résultats groupés par pharmacie.
+  ///
+  /// Exemple d'utilisation :
+  ///   final results = await searchMultipleMedications(
+  ///     ['Paracetamol', 'Amoxicilline'],
+  ///     latitude: lat,
+  ///     longitude: lng,
+  ///   );
+  ///   // results est une Map<Pharmacy, List<MedicationAvailability>>
+  Future<PharmacySearchResult> searchMultipleMedications(
+    List<String> queries, {
+    required double latitude,
+    required double longitude,
+    int radius = nearbyRadiusMeters,
+  }) async {
+    final cleanQueries = queries
+        .map((q) => q.trim())
+        .where((q) => q.length >= 2)
+        .toList();
+
+    if (cleanQueries.isEmpty) {
+      return PharmacySearchResult(
+        byMedication: [],
+        byPharmacy: {},
+        notFound: queries,
+      );
+    }
+
+    final allFirestorePharmacies = await fetchPharmacies();
+
+    final nearbyPharmacies = _sortByDistance(
+      allFirestorePharmacies,
+      latitude: latitude,
+      longitude: longitude,
+    ).where((pharmacy) {
+      final point = pharmacy.localisation;
+      if (point == null) return false;
+      final distance = _calculateDistance(
+        latitude,
+        longitude,
+        point.latitude,
+        point.longitude,
+      );
+      return distance <= radius;
+    }).take(nearbyPharmacyLimit).toList();
+
+    // byMedication : pour chaque requête, la liste des pharmacies qui ont ce médicament
+    final Map<String, _CatalogAccumulator> byMedicationAcc = {};
+    // byPharmacy : pour chaque pharmacie, la liste des médicaments trouvés
+    final Map<String, _PharmacyResultAccumulator> byPharmacyAcc = {};
+    // Quelles requêtes ont trouvé au moins un résultat
+    final Set<String> found = {};
+
+    for (final pharmacy in nearbyPharmacies) {
+      for (final medication in pharmacy.medicaments) {
+        final lowerName = medication.nom.toLowerCase();
+        final lowerDosage = medication.dosage.toLowerCase();
+
+        for (final query in cleanQueries) {
+          final lowerQuery = query.toLowerCase();
+
+          if (!lowerName.contains(lowerQuery) &&
+              !lowerDosage.contains(lowerQuery)) {
+            continue;
+          }
+
+          found.add(query);
+
+          // Accumulation par médicament
+          final medKey = medication.id.isNotEmpty
+              ? medication.id
+              : '${medication.nom}_${medication.dosage}'.toLowerCase();
+
+          byMedicationAcc
+              .putIfAbsent(
+                medKey,
+                () => _CatalogAccumulator(
+                  id: medication.id.isNotEmpty ? medication.id : medKey,
+                  nom: medication.nom,
+                  dosage: medication.dosage,
+                ),
+              )
+              .availabilities
+              .add(MedicationAvailability(
+                pharmacy: pharmacy,
+                medication: medication,
+              ));
+
+          // Accumulation par pharmacie
+          byPharmacyAcc
+              .putIfAbsent(
+                pharmacy.id,
+                () => _PharmacyResultAccumulator(pharmacy: pharmacy),
+              )
+              .availabilities
+              .add(MedicationAvailability(
+                pharmacy: pharmacy,
+                medication: medication,
+              ));
+        }
+      }
+    }
+
+    // Médicaments non trouvés
+    final notFound = cleanQueries.where((q) => !found.contains(q)).toList();
+
+    return PharmacySearchResult(
+      byMedication: byMedicationAcc.values
+          .map((e) => e.toEntry())
+          .toList()
+        ..sort((a, b) => a.nom.compareTo(b.nom)),
+      byPharmacy: {
+        for (final acc in byPharmacyAcc.values)
+          acc.pharmacy: List.unmodifiable(acc.availabilities),
+      },
+      notFound: notFound,
     );
   }
 
-  // CORRECTION : paramètre `medicaments` ajouté (liste vide par défaut)
-  // et `localisation` reçoit bien un GeoLocationPoint
   Future<List<Pharmacy>> _fetchOverpassNearby(
     double lat,
     double lng, {
@@ -448,10 +625,8 @@ out center;
                 (e['tags']?['addr:street'])?.toString(),
             telephone: (e['tags']?['phone'])?.toString(),
             whatsapp: null,
-            // CORRECTION : GeoLocationPoint au lieu d'une Map brute
             localisation: GeoLocationPoint(latitude: eLat, longitude: eLon),
             horaires: null,
-            // CORRECTION : paramètre obligatoire ajouté
             medicaments: const [],
             source: 'osm',
           );
@@ -489,7 +664,6 @@ out center;
 
     final Map<String, Pharmacy> map = {};
     for (final p in [...firestore, ...osm]) {
-      // CORRECTION : localisation est maintenant toujours un GeoLocationPoint?
       final loc = p.localisation;
       final double pLat = loc?.latitude ?? 0.0;
       final double pLng = loc?.longitude ?? 0.0;
@@ -501,6 +675,40 @@ out center;
     return map.values.toList();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Modèle de résultat pour la recherche multi-médicaments
+// ---------------------------------------------------------------------------
+
+/// Résultat complet d'une recherche multi-médicaments.
+///
+/// [byMedication] : liste de [MedicationCatalogEntry], chacune contenant
+///   toutes les pharmacies proches qui proposent ce médicament avec son prix
+///   et sa disponibilité.
+///
+/// [byPharmacy] : vue inversée — pour chaque pharmacie, tous les médicaments
+///   correspondants avec prix et disponibilité.
+///
+/// [notFound] : noms des médicaments pour lesquels aucune pharmacie n'a de
+///   stock dans le rayon donné.
+class PharmacySearchResult {
+  const PharmacySearchResult({
+    required this.byMedication,
+    required this.byPharmacy,
+    required this.notFound,
+  });
+
+  final List<MedicationCatalogEntry> byMedication;
+  final Map<Pharmacy, List<MedicationAvailability>> byPharmacy;
+  final List<String> notFound;
+
+  bool get isEmpty => byMedication.isEmpty;
+  bool get isNotEmpty => byMedication.isNotEmpty;
+}
+
+// ---------------------------------------------------------------------------
+// Accumulateurs internes
+// ---------------------------------------------------------------------------
 
 class _CatalogAccumulator {
   _CatalogAccumulator({
@@ -522,4 +730,11 @@ class _CatalogAccumulator {
       availabilities: List.unmodifiable(availabilities),
     );
   }
+}
+
+class _PharmacyResultAccumulator {
+  _PharmacyResultAccumulator({required this.pharmacy});
+
+  final Pharmacy pharmacy;
+  final List<MedicationAvailability> availabilities = [];
 }

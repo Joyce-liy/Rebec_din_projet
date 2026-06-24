@@ -1,6 +1,7 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
-import 'package:camera/camera.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:pharma/services/gemini_service.dart';
 import 'package:pharma/services/history_service.dart';
 
@@ -11,68 +12,90 @@ class ScannerPage extends StatefulWidget {
   State<ScannerPage> createState() => _ScannerPageState();
 }
 
-class _ScannerPageState extends State<ScannerPage>
-    with SingleTickerProviderStateMixin {
-  CameraController? _controller;
-  bool _isInitialized = false;
+class _ScannerPageState extends State<ScannerPage> {
+  final ImagePicker _imagePicker = ImagePicker();
+
+  bool _isImporting = false;
   bool _isProcessing = false;
-
-  // TextRecognizer gardé pour usage futur éventuel
-  final TextRecognizer _textRecognizer = TextRecognizer();
-  late AnimationController _animationController;
-
+  final List<_CadnetDocument> _cadnetDocuments = [];
   List<Map<String, dynamic>> _detectedMeds = [];
 
-  @override
-  void initState() {
-    super.initState();
-    _initializeCamera();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat(reverse: true);
-  }
+  Future<void> _importCadnetDocuments() async {
+    if (_isImporting || _isProcessing) return;
 
-  Future<void> _initializeCamera() async {
-    final cameras = await availableCameras();
-    if (cameras.isEmpty) return;
-
-    _controller = CameraController(
-      cameras[0],
-      ResolutionPreset.high,
-      enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg,
-    );
+    setState(() => _isImporting = true);
 
     try {
-      await _controller!.initialize();
+      final images = await _imagePicker.pickMultiImage(imageQuality: 92);
+      if (images.isEmpty) {
+        return;
+      }
+
+      final imported = <_CadnetDocument>[];
+      for (final image in images) {
+        final bytes = await image.readAsBytes();
+        imported.add(
+          _CadnetDocument(
+            name: image.name.isNotEmpty ? image.name : 'Document Cadnet',
+            bytes: bytes,
+          ),
+        );
+      }
+
       if (!mounted) return;
-      setState(() => _isInitialized = true);
+      setState(() {
+        _cadnetDocuments
+          ..clear()
+          ..addAll(imported);
+        _detectedMeds = [];
+      });
     } catch (e) {
-      debugPrint("Erreur caméra: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Erreur d'importation : $e")),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isImporting = false);
+      }
     }
   }
 
-  Future<void> _scanImage() async {
-    if (_controller == null ||
-        !_controller!.value.isInitialized ||
-        _isProcessing) return;
+  Future<void> _analyzeImportedCadnet() async {
+    if (_cadnetDocuments.isEmpty || _isProcessing) {
+      if (_cadnetDocuments.isEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Importez d'abord le Cadnet avant l'analyse."),
+          ),
+        );
+      }
+      return;
+    }
 
     setState(() => _isProcessing = true);
 
     try {
-      final XFile image = await _controller!.takePicture();
-      final bytes = await image.readAsBytes();
+      final orderedNames = <String>[];
+      final seenNames = <String>{};
 
-      // ✅ Appel corrigé — méthode présente dans GeminiService
-      final List<String> result =
-          await GeminiService.readHandwrittenPrescription(bytes);
+      for (final document in _cadnetDocuments) {
+        final result =
+            await GeminiService.readHandwrittenPrescription(document.bytes);
+        for (final name in result) {
+          final cleanName = name.trim();
+          final key = cleanName.toLowerCase();
+          if (cleanName.isNotEmpty && seenNames.add(key)) {
+            orderedNames.add(cleanName);
+          }
+        }
+      }
 
       if (!mounted) return;
 
       setState(() {
-        _detectedMeds = result
-            .map((name) => {"name": name, "selected": true})
+        _detectedMeds = orderedNames
+            .map((name) => {'name': name, 'selected': true})
             .toList();
         _isProcessing = false;
       });
@@ -83,7 +106,8 @@ class _ScannerPageState extends State<ScannerPage>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-                "Aucun médicament détecté. Essayez de mieux éclairer l'image."),
+              "Aucun medicament detecte dans les documents importes.",
+            ),
           ),
         );
       }
@@ -91,166 +115,232 @@ class _ScannerPageState extends State<ScannerPage>
       if (!mounted) return;
       setState(() => _isProcessing = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Erreur : $e")),
+        SnackBar(content: Text('Erreur : $e')),
       );
     }
   }
 
-  @override
-  void dispose() {
-    _controller?.dispose();
-    _textRecognizer.close();
-    _animationController.dispose();
-    super.dispose();
+  void _clearCadnet() {
+    if (_isProcessing) return;
+    setState(() {
+      _cadnetDocuments.clear();
+      _detectedMeds = [];
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final hasCadnet = _cadnetDocuments.isNotEmpty;
+
     return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        fit: StackFit.expand,
-        children: [
-          if (_isInitialized)
-            CameraPreview(_controller!)
-          else
-            const Center(
-                child: CircularProgressIndicator(color: Colors.green)),
-
-          _buildSmartOverlay(),
-
-          // Bouton Fermer
-          Positioned(
-            top: 50,
-            left: 20,
-            child: CircleAvatar(
-              backgroundColor: Colors.black26,
-              child: IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new, color: Color(0xFF0F172A)),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text(
+          'Cadnet importe',
+          style: TextStyle(
+            color: Color(0xFF0F172A),
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
+        ),
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.04),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: const Icon(
+                      Icons.folder_copy_rounded,
+                      color: Color(0xFF059669),
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Importer le Cadnet',
+                    style: TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 22,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "L'analyse se fait uniquement sur les documents deja importes depuis votre Cadnet.",
+                    style: TextStyle(
+                      color: Color(0xFF64748B),
+                      fontSize: 14,
+                      height: 1.45,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton.icon(
+                      onPressed:
+                          _isImporting ? null : _importCadnetDocuments,
+                      icon: _isImporting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.upload_file_rounded),
+                      label: Text(
+                        hasCadnet ? 'Remplacer le Cadnet' : 'Importer Cadnet',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF059669),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-
-          // Interface de capture
-          Positioned(
-            bottom: 60,
-            left: 0,
-            right: 0,
-            child: Column(
-              children: [
-                const Text(
-                  "Alignez l'ordonnance dans le cadre",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w500,
-                    shadows: [Shadow(blurRadius: 10)],
+            const SizedBox(height: 18),
+            if (hasCadnet) _buildImportedDocuments(),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              height: 56,
+              child: ElevatedButton.icon(
+                onPressed:
+                    hasCadnet && !_isProcessing ? _analyzeImportedCadnet : null,
+                icon: _isProcessing
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.document_scanner_rounded),
+                label: Text(
+                  _isProcessing
+                      ? 'Analyse du Cadnet...'
+                      : 'Analyser les documents importes',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  disabledBackgroundColor: const Color(0xFFCBD5E1),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
-                const SizedBox(height: 20),
-                GestureDetector(
-                  onTap: _scanImage,
-                  child: Container(
-                    height: 85,
-                    width: 85,
-                    padding: const EdgeInsets.all(5),
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 4),
-                    ),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                          color: Colors.white, shape: BoxShape.circle),
-                      child: _isProcessing
-                          ? const Padding(
-                              padding: EdgeInsets.all(20),
-                              child: CircularProgressIndicator(
-                                  color: Colors.green, strokeWidth: 3),
-                            )
-                          : const Icon(Icons.qr_code_scanner,
-                              size: 40, color: Colors.green),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  Widget _buildSmartOverlay() {
-    double width = MediaQuery.of(context).size.width * 0.85;
-    double height = 400;
-
-    return Stack(
-      children: [
-        ColorFiltered(
-          colorFilter: ColorFilter.mode(
-              Colors.black.withOpacity(0.5), BlendMode.srcOut),
-          child: Stack(
-            children: [
-              Container(
-                  decoration: const BoxDecoration(
-                      color: Colors.black,
-                      backgroundBlendMode: BlendMode.dstOut)),
-              Align(
-                alignment: Alignment.center,
-                child: Container(
-                  width: width,
-                  height: height,
-                  decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(20)),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Align(
-          alignment: Alignment.center,
-          child: Container(
-            width: width,
-            height: height,
-            decoration: BoxDecoration(
-              border: Border.all(
-                  color: Colors.green.withOpacity(0.5), width: 2),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Stack(
+  Widget _buildImportedDocuments() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 8),
+            child: Row(
               children: [
-                AnimatedBuilder(
-                  animation: _animationController,
-                  builder: (context, child) {
-                    return Positioned(
-                      top: _animationController.value * (height - 20),
-                      left: 10,
-                      right: 10,
-                      child: Container(
-                        height: 2,
-                        decoration: BoxDecoration(
-                          boxShadow: [
-                            BoxShadow(
-                                color: Colors.green.withOpacity(0.6),
-                                blurRadius: 10,
-                                spreadRadius: 2)
-                          ],
-                          gradient: const LinearGradient(colors: [
-                            Colors.transparent,
-                            Colors.green,
-                            Colors.transparent
-                          ]),
-                        ),
-                      ),
-                    );
-                  },
+                const Icon(
+                  Icons.description_rounded,
+                  color: Color(0xFF059669),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${_cadnetDocuments.length} document${_cadnetDocuments.length > 1 ? 's' : ''} importe${_cadnetDocuments.length > 1 ? 's' : ''}',
+                    style: const TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _clearCadnet,
+                  child: const Text('Retirer'),
                 ),
               ],
             ),
           ),
-        ),
-      ],
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+          ..._cadnetDocuments.map(
+            (document) => ListTile(
+              leading: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(
+                  document.bytes,
+                  width: 44,
+                  height: 44,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              title: Text(
+                document.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              subtitle: const Text('Pret pour analyse'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -275,29 +365,37 @@ class _ScannerPageState extends State<ScannerPage>
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(10)),
+                    color: Colors.grey[300],
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                 ),
               ),
               const SizedBox(height: 20),
-              const Text("Médicaments identifiés",
-                  style: TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold)),
-              const Text("Désélectionnez si nécessaire",
-                  style: TextStyle(color: Colors.grey)),
+              const Text(
+                'Medicaments identifies',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const Text(
+                'Deselectionnez si necessaire',
+                style: TextStyle(color: Colors.grey),
+              ),
               const SizedBox(height: 20),
               Expanded(
                 child: ListView.builder(
                   itemCount: _detectedMeds.length,
                   itemBuilder: (context, i) => CheckboxListTile(
                     activeColor: Colors.green,
-                    title: Text(_detectedMeds[i]['name'],
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    value: _detectedMeds[i]['selected'],
-                    onChanged: (val) =>
-                        setSheetState(() => _detectedMeds[i]['selected'] = val),
+                    title: Text(
+                      _detectedMeds[i]['name'] as String,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    value: _detectedMeds[i]['selected'] as bool,
+                    onChanged: (val) => setSheetState(
+                      () => _detectedMeds[i]['selected'] = val,
+                    ),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                 ),
               ),
@@ -309,7 +407,8 @@ class _ScannerPageState extends State<ScannerPage>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.green,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15)),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
                   ),
                   onPressed: () {
                     final selectedMedications = _detectedMeds
@@ -317,16 +416,23 @@ class _ScannerPageState extends State<ScannerPage>
                         .map((med) => med['name'] as String)
                         .toList();
 
-                    for (var medName in selectedMedications) {
-                      HistoryService.instance.add(medName, source: "Scanner IA");
+                    for (final medName in selectedMedications) {
+                      HistoryService.instance.add(
+                        medName,
+                        source: 'Cadnet',
+                      );
                     }
 
                     Navigator.pop(context);
                     Navigator.pop(context, selectedMedications);
                   },
-                  child: const Text("RECHERCHER",
-                      style: TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'RECHERCHER',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -335,4 +441,14 @@ class _ScannerPageState extends State<ScannerPage>
       ),
     );
   }
+}
+
+class _CadnetDocument {
+  const _CadnetDocument({
+    required this.name,
+    required this.bytes,
+  });
+
+  final String name;
+  final Uint8List bytes;
 }

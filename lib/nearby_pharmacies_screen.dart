@@ -106,23 +106,6 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
     }
   }
 
-  Future<void> _openWhatsApp(String phoneNumber) async {
-    String cleanNumber = phoneNumber.replaceAll(RegExp(r'[\s\-\(\)]'), '');
-    if (!cleanNumber.startsWith('237') && cleanNumber.length == 9) {
-      cleanNumber = '237$cleanNumber';
-    }
-    final Uri whatsappUri = Uri.parse('https://wa.me/$cleanNumber');
-    if (await canLaunchUrl(whatsappUri)) {
-      await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible d\'ouvrir WhatsApp.')),
-        );
-      }
-    }
-  }
-
   String? _primaryWhatsAppNumber(Pharmacy pharmacy) {
     final whatsapp = pharmacy.whatsapp?.trim();
     if (whatsapp != null && whatsapp.isNotEmpty) return whatsapp;
@@ -142,19 +125,168 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
     final medicationName = await _askMedicationName();
     if (medicationName == null) return;
 
-    final launched = await _whatsAppService.openAvailabilityRequest(
+    final result = await _whatsAppService.sendAvailabilityRequest(
       phoneNumber: phoneNumber,
+      pharmacyId: pharmacy.id,
       pharmacyName: pharmacy.nom,
       medicationName: medicationName,
     );
     if (!mounted) return;
-    if (!launched) {
+    if (!result.success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Impossible d\'ouvrir WhatsApp.')),
+        SnackBar(
+          content: Text(
+            result.message ?? "Impossible d'envoyer le message WhatsApp.",
+          ),
+        ),
       );
       return;
     }
-    await _showWhatsAppReplyDialog(pharmacy, medicationName);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.message ?? 'Demande WhatsApp envoyee.')),
+    );
+    final conversationId = result.conversationId;
+    if (conversationId != null) {
+      await _showWhatsAppConversationDialog(
+        conversationId: conversationId,
+        pharmacy: pharmacy,
+        medicationName: medicationName,
+      );
+    }
+  }
+
+  Future<void> _showWhatsAppConversationDialog({
+    required String conversationId,
+    required Pharmacy pharmacy,
+    required String medicationName,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text('WhatsApp - ${pharmacy.nom}'),
+          content: SizedBox(
+            width: double.maxFinite,
+            height: 360,
+            child: StreamBuilder<WhatsAppConversation?>(
+              stream: _whatsAppService.watchConversation(conversationId),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final conversation = snapshot.data;
+                if (conversation == null) {
+                  return const Center(
+                    child: Text('Conversation introuvable.'),
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      medicationName,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF334155),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: conversation.messages.length,
+                        itemBuilder: (context, index) {
+                          return _buildWhatsAppMessageBubble(
+                            conversation.messages[index],
+                            pharmacy.nom,
+                            medicationName,
+                          );
+                        },
+                      ),
+                    ),
+                    if (conversation.isWaitingForReply)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 10),
+                        child: Text(
+                          'En attente de reponse automatique...',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Fermer'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildWhatsAppMessageBubble(
+    WhatsAppConversationMessage message,
+    String pharmacyName,
+    String medicationName,
+  ) {
+    final isOutgoing = message.direction == WhatsAppMessageDirection.outgoing;
+    final isIncoming = message.direction == WhatsAppMessageDirection.incoming;
+    final interpretation = isIncoming
+        ? _whatsAppService.interpretPharmacyReply(
+            message.text,
+            pharmacyName: pharmacyName,
+            medicationName: medicationName,
+          )
+        : null;
+
+    return Align(
+      alignment: isOutgoing ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        constraints: const BoxConstraints(maxWidth: 280),
+        decoration: BoxDecoration(
+          color: isOutgoing ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color:
+                isOutgoing ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              message.text,
+              style: const TextStyle(
+                color: Color(0xFF0F172A),
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+            if (interpretation != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                interpretation.summary,
+                style: const TextStyle(
+                  color: Color(0xFF059669),
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 
   Future<String?> _askMedicationName() async {

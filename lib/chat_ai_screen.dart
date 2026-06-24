@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
@@ -92,6 +94,8 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   _PharmacyOption? _selectedOption;
   String? _lastMedicationQuery;
   int? _recommendedIndex;
+  StreamSubscription<WhatsAppConversation?>? _whatsAppConversationSubscription;
+  final Set<String> _handledWhatsAppMessageIds = {};
 
   // --- Position utilisateur (dynamic pour compatibilité
   dynamic _userLocation;
@@ -131,6 +135,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
 
   @override
   void dispose() {
+    _whatsAppConversationSubscription?.cancel();
     _typingAnimController.dispose();
     _inputController.dispose();
     _scrollController.dispose();
@@ -711,22 +716,73 @@ class _ChatAIScreenState extends State<ChatAIScreen>
         ? _lastMedicationQuery!.trim()
         : 'le medicament recherche';
 
-    final launched = await _whatsAppService.openAvailabilityRequest(
+    final result = await _whatsAppService.sendAvailabilityRequest(
       phoneNumber: phone,
+      pharmacyId: pharmacy.id,
       pharmacyName: pharmacy.nom,
       medicationName: medication,
     );
 
-    if (!launched) {
-      await _addAIMessage("Impossible d'ouvrir WhatsApp pour le moment.");
+    if (!result.success) {
+      await _addAIMessage(
+        result.message ?? "Impossible d'envoyer le message WhatsApp.",
+      );
       return;
     }
 
+    final conversationId = result.conversationId;
+    if (conversationId != null) {
+      _listenToWhatsAppConversation(
+        conversationId: conversationId,
+        pharmacy: pharmacy,
+        medicationName: medication,
+      );
+    }
+
     await _addAIMessage(
-      "J'ai ouvert WhatsApp avec un message pret a envoyer a ${pharmacy.nom}. "
-      "Quand la pharmacie repond, copiez sa reponse ici et je l'interpreterai.",
+      "Demande WhatsApp envoyee en arriere-plan a ${pharmacy.nom}. "
+      "Je surveille les reponses et je les afficherai ici automatiquement.",
     );
     setState(() => _stage = _ConversationStage.awaitingWhatsAppReply);
+  }
+
+  void _listenToWhatsAppConversation({
+    required String conversationId,
+    required Pharmacy pharmacy,
+    required String medicationName,
+  }) {
+    _whatsAppConversationSubscription?.cancel();
+    _handledWhatsAppMessageIds.clear();
+    _whatsAppConversationSubscription =
+        _whatsAppService.watchConversation(conversationId).listen(
+      (conversation) async {
+        if (!mounted || conversation == null) return;
+
+        final incomingMessages = conversation.messages.where((message) {
+          final messageKey = message.id.isNotEmpty
+              ? message.id
+              : '${message.createdAt.microsecondsSinceEpoch}_${message.text.hashCode}';
+          return message.direction == WhatsAppMessageDirection.incoming &&
+              _handledWhatsAppMessageIds.add(messageKey);
+        });
+
+        for (final message in incomingMessages) {
+          final interpretation = _whatsAppService.interpretPharmacyReply(
+            message.text,
+            pharmacyName: pharmacy.nom,
+            medicationName: medicationName,
+          );
+          await _addAIMessage(
+            "Reponse WhatsApp de ${pharmacy.nom} :\n"
+            "${message.text}\n\n"
+            "${interpretation.summary}",
+          );
+          if (mounted) {
+            setState(() => _stage = _ConversationStage.idle);
+          }
+        }
+      },
+    );
   }
 
   Future<void> _interpretWhatsAppReply(String reply) async {
@@ -826,7 +882,18 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     await _addUserMessage(input);
 
     if (_stage == _ConversationStage.awaitingWhatsAppReply) {
-      await _interpretWhatsAppReply(input);
+      if (input.toLowerCase().contains('annuler')) {
+        await _whatsAppConversationSubscription?.cancel();
+        setState(() => _stage = _ConversationStage.idle);
+        await _addAIMessage(
+          "Attente WhatsApp annulee. Vous pouvez lancer une autre recherche.",
+        );
+      } else {
+        await _addAIMessage(
+          "J'attends encore la reponse automatique de la pharmacie. "
+          "Tapez annuler pour quitter cette attente.",
+        );
+      }
       return;
     }
 
@@ -1036,7 +1103,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
             )
           else if (_stage == _ConversationStage.awaitingWhatsAppReply)
             _buildContextPill(
-              "Collez ici la reponse WhatsApp de la pharmacie",
+              "En attente de la reponse WhatsApp automatique",
               const Color(0xFFE8F5E9),
               const Color(0xFF128C7E),
               Icons.chat_outlined,
@@ -1428,7 +1495,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
                         : _stage == _ConversationStage.awaitingAllergyInfo
                             ? "Vos allergies et médicaments du jour..."
                             : _stage == _ConversationStage.awaitingWhatsAppReply
-                                ? "Collez la reponse WhatsApp..."
+                                ? "Tapez annuler pour reprendre..."
                                 : "Symptômes, médicament, posologie...",
                     hintStyle: TextStyle(
                       color: Colors.grey.shade400,

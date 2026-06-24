@@ -1,9 +1,37 @@
-import 'package:url_launcher/url_launcher.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum PharmacyReplyAvailability {
   available,
   unavailable,
   unknown,
+}
+
+enum WhatsAppMessageDirection {
+  outgoing,
+  incoming,
+  system;
+
+  static WhatsAppMessageDirection fromJson(String? value) {
+    switch (value) {
+      case 'outgoing':
+        return WhatsAppMessageDirection.outgoing;
+      case 'incoming':
+        return WhatsAppMessageDirection.incoming;
+      default:
+        return WhatsAppMessageDirection.system;
+    }
+  }
+
+  String get jsonValue {
+    switch (this) {
+      case WhatsAppMessageDirection.outgoing:
+        return 'outgoing';
+      case WhatsAppMessageDirection.incoming:
+        return 'incoming';
+      case WhatsAppMessageDirection.system:
+        return 'system';
+    }
+  }
 }
 
 class PharmacyReplyInterpretation {
@@ -20,12 +48,117 @@ class PharmacyReplyInterpretation {
   String get priceLabel => price == null ? 'Prix non precise' : '$price FCFA';
 }
 
+class WhatsAppConversationMessage {
+  const WhatsAppConversationMessage({
+    required this.id,
+    required this.direction,
+    required this.text,
+    required this.createdAt,
+  });
+
+  factory WhatsAppConversationMessage.fromJson(Map<String, dynamic> json) {
+    return WhatsAppConversationMessage(
+      id: json['id']?.toString() ?? '',
+      direction: WhatsAppMessageDirection.fromJson(
+        json['direction']?.toString(),
+      ),
+      text: json['text']?.toString() ?? '',
+      createdAt: _parseDate(json['created_at']),
+    );
+  }
+
+  final String id;
+  final WhatsAppMessageDirection direction;
+  final String text;
+  final DateTime createdAt;
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'direction': direction.jsonValue,
+      'text': text,
+      'created_at': createdAt.toIso8601String(),
+    };
+  }
+}
+
+class WhatsAppConversation {
+  const WhatsAppConversation({
+    required this.id,
+    required this.pharmacyId,
+    required this.pharmacyName,
+    required this.phoneNumber,
+    required this.medicationName,
+    required this.status,
+    required this.messages,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory WhatsAppConversation.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final json = doc.data() ?? <String, dynamic>{};
+    final messages = (json['messages'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((item) => WhatsAppConversationMessage.fromJson(
+              Map<String, dynamic>.from(item),
+            ))
+        .toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    return WhatsAppConversation(
+      id: doc.id,
+      pharmacyId: json['pharmacy_id']?.toString() ?? '',
+      pharmacyName: json['pharmacy_name']?.toString() ?? '',
+      phoneNumber: json['phone_number']?.toString() ?? '',
+      medicationName: json['medication_name']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'pending_gateway',
+      messages: messages,
+      createdAt: _parseDate(json['created_at']),
+      updatedAt: _parseDate(json['updated_at']),
+    );
+  }
+
+  final String id;
+  final String pharmacyId;
+  final String pharmacyName;
+  final String phoneNumber;
+  final String medicationName;
+  final String status;
+  final List<WhatsAppConversationMessage> messages;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  bool get isWaitingForReply =>
+      status == 'pending_gateway' ||
+      status == 'sent' ||
+      status == 'waiting_reply';
+}
+
+class WhatsAppSendResult {
+  const WhatsAppSendResult({
+    required this.success,
+    this.conversationId,
+    this.message,
+  });
+
+  final bool success;
+  final String? conversationId;
+  final String? message;
+}
+
 class WhatsAppService {
   WhatsAppService._internal();
 
   static final WhatsAppService _instance = WhatsAppService._internal();
 
   factory WhatsAppService() => _instance;
+
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
+  CollectionReference<Map<String, dynamic>> get _conversations =>
+      _firestore.collection('whatsapp_conversations');
 
   String? normalizePhoneNumber(String? rawNumber) {
     if (rawNumber == null) {
@@ -56,50 +189,84 @@ class WhatsAppService {
         'est disponible dans votre pharmacie et a quel prix. Merci.';
   }
 
-  Future<bool> openAvailabilityRequest({
+  Future<WhatsAppSendResult> sendAvailabilityRequest({
     required String phoneNumber,
+    required String pharmacyId,
     required String pharmacyName,
     required String medicationName,
   }) async {
     final normalized = normalizePhoneNumber(phoneNumber);
     if (normalized == null) {
-      return false;
+      return const WhatsAppSendResult(
+        success: false,
+        message: 'Numero WhatsApp invalide.',
+      );
     }
 
-    final message = buildAvailabilityRequestMessage(
+    final text = buildAvailabilityRequestMessage(
       pharmacyName: pharmacyName,
       medicationName: medicationName,
     );
-
-    final webUri = Uri(
-      scheme: 'https',
-      host: 'wa.me',
-      path: '/$normalized',
-      queryParameters: {'text': message},
-    );
+    final now = DateTime.now();
+    final conversationRef = _conversations.doc();
 
     try {
-      if (await launchUrl(webUri, mode: LaunchMode.externalApplication)) {
-        return true;
+      await conversationRef.set({
+        'pharmacy_id': pharmacyId,
+        'pharmacy_name': pharmacyName,
+        'phone_number': normalized,
+        'medication_name': medicationName,
+        'status': 'pending_gateway',
+        'gateway_action': 'send_whatsapp_message',
+        'gateway_processed': false,
+        'created_at': FieldValue.serverTimestamp(),
+        'updated_at': FieldValue.serverTimestamp(),
+        'messages': [
+          WhatsAppConversationMessage(
+            id: 'out_${now.microsecondsSinceEpoch}',
+            direction: WhatsAppMessageDirection.outgoing,
+            text: text,
+            createdAt: now,
+          ).toJson(),
+        ],
+      });
+
+      return WhatsAppSendResult(
+        success: true,
+        conversationId: conversationRef.id,
+        message: 'Demande WhatsApp envoyee en arriere-plan.',
+      );
+    } catch (e) {
+      return WhatsAppSendResult(
+        success: false,
+        message: "Impossible d'envoyer la demande WhatsApp : $e",
+      );
+    }
+  }
+
+  // Kept as a compatibility wrapper for older screens. It no longer opens
+  // WhatsApp externally; it queues the message for the in-app gateway flow.
+  Future<bool> openAvailabilityRequest({
+    required String phoneNumber,
+    required String pharmacyName,
+    required String medicationName,
+  }) async {
+    final result = await sendAvailabilityRequest(
+      phoneNumber: phoneNumber,
+      pharmacyId: '',
+      pharmacyName: pharmacyName,
+      medicationName: medicationName,
+    );
+    return result.success;
+  }
+
+  Stream<WhatsAppConversation?> watchConversation(String conversationId) {
+    return _conversations.doc(conversationId).snapshots().map((snapshot) {
+      if (!snapshot.exists) {
+        return null;
       }
-    } catch (_) {
-      // Fall back to the native WhatsApp scheme below.
-    }
-
-    final appUri = Uri(
-      scheme: 'whatsapp',
-      host: 'send',
-      queryParameters: {
-        'phone': normalized,
-        'text': message,
-      },
-    );
-
-    try {
-      return launchUrl(appUri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      return false;
-    }
+      return WhatsAppConversation.fromFirestore(snapshot);
+    });
   }
 
   PharmacyReplyInterpretation interpretPharmacyReply(
@@ -193,4 +360,17 @@ class WhatsAppService {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
+}
+
+DateTime _parseDate(dynamic value) {
+  if (value is Timestamp) {
+    return value.toDate();
+  }
+  if (value is DateTime) {
+    return value;
+  }
+  if (value is String) {
+    return DateTime.tryParse(value) ?? DateTime.fromMillisecondsSinceEpoch(0);
+  }
+  return DateTime.fromMillisecondsSinceEpoch(0);
 }

@@ -15,6 +15,40 @@ import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'dart:async';
 import 'package:permission_handler/permission_handler.dart';
 
+// ─────────────────────────────────────────────────────────────
+// DESIGN TOKENS — palette "pharma Pro"
+// Primary   : Teal profond   #0A6E6E  (confiance médicale)
+// Accent    : Émeraude vif   #00BFA6  (disponibilité / vie)
+// Warning   : Ambre doré     #F4A621
+// Danger    : Corail         #F25C54
+// Surface   : Blanc cassé    #F7FAFA
+// Card bg   : Blanc pur      #FFFFFF
+// Text h1   : Ardoise foncé  #0D1F2D
+// Text body : Gris ardoise   #4A6572
+// Border    : Gris perle     #DDE6E6
+// ─────────────────────────────────────────────────────────────
+
+class _PharmaColors {
+  static const primary = Color(0xFF0A6E6E);
+  static const primaryLight = Color(0xFF0D8C8C);
+  static const primarySurface = Color(0xFFE6F4F4);
+  static const accent = Color(0xFF00BFA6);
+  static const accentSurface = Color(0xFFE0FAF7);
+  static const warning = Color(0xFFF4A621);
+  static const warningSurface = Color(0xFFFFF4E0);
+  static const danger = Color(0xFFF25C54);
+  static const dangerSurface = Color(0xFFFFEDEC);
+  static const neutral = Color(0xFF64748B);
+  static const neutralSurface = Color(0xFFF1F5F5);
+  static const surface = Color(0xFFF7FAFA);
+  static const cardBg = Color(0xFFFFFFFF);
+  static const textH1 = Color(0xFF0D1F2D);
+  static const textBody = Color(0xFF4A6572);
+  static const textMuted = Color(0xFF8FA3AE);
+  static const border = Color(0xFFDDE6E6);
+  static const whatsapp = Color(0xFF25D366);
+}
+
 class SearchScreen extends StatefulWidget {
   final List<String>? scannedMedications;
 
@@ -30,6 +64,9 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen>
     with SingleTickerProviderStateMixin {
+  static const double _nearbyRadiusMeters = 5000;
+  static const int _nearbyPharmacyLimit = 5;
+
   late stt.SpeechToText _speech;
   late AnimationController _animationController;
   Timer? _silenceTimer;
@@ -38,6 +75,8 @@ class _SearchScreenState extends State<SearchScreen>
   final WhatsAppService _whatsAppService = WhatsAppService();
   final LocationService _locationService = LocationService();
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  bool _searchFocused = false;
 
   List<MedicationCatalogEntry> _catalog = [];
   List<MedicationCatalogEntry> _filtered = [];
@@ -52,16 +91,29 @@ class _SearchScreenState extends State<SearchScreen>
     super.initState();
     _animationController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 900),
     )..repeat(reverse: true);
+    _searchFocusNode.addListener(() {
+      setState(() => _searchFocused = _searchFocusNode.hasFocus);
+    });
     _loadSearchHistory();
     _initialize();
-
-    // Traiter les médicaments scannés s'ils existent
     if (widget.scannedMedications != null &&
         widget.scannedMedications!.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _processScannedMedications();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant SearchScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.scannedMedications != oldWidget.scannedMedications &&
+        widget.scannedMedications != null &&
+        widget.scannedMedications!.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _processScannedMedications();
       });
     }
   }
@@ -73,8 +125,6 @@ class _SearchScreenState extends State<SearchScreen>
   void _processScannedMedications() {
     if (widget.scannedMedications == null || widget.scannedMedications!.isEmpty)
       return;
-
-    // Joindre tous les médicaments avec un séparateur
     final searchText = widget.scannedMedications!.join(', ');
     _searchController.text = searchText;
     _applyFilter(searchText);
@@ -84,36 +134,31 @@ class _SearchScreenState extends State<SearchScreen>
   void dispose() {
     _animationController.dispose();
     _silenceTimer?.cancel();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
   void _startSilenceTimer() {
     _silenceTimer?.cancel();
     _silenceTimer = Timer(const Duration(seconds: 5), () {
-      if (_isListening) {
-        _stopListening();
-      }
+      if (_isListening) _stopListening();
     });
   }
 
   void _listen() async {
     if (!_isListening) {
       bool available = await _speech.initialize(
-        onStatus: (val) => print('Statut: $val'),
-        onError: (val) => print('Erreur: $val'),
+        onStatus: (val) => debugPrint('Statut: $val'),
+        onError: (val) => debugPrint('Erreur: $val'),
       );
-
       if (available) {
         setState(() => _isListening = true);
         _startSilenceTimer();
-
         _speech.listen(
           onResult: (val) {
             setState(() {
               _searchController.text = val.recognizedWords;
-              if (val.recognizedWords.trim().isNotEmpty) {
-                _isSearching = true;
-              }
+              if (val.recognizedWords.trim().isNotEmpty) _isSearching = true;
             });
             _startSilenceTimer();
           },
@@ -135,7 +180,6 @@ class _SearchScreenState extends State<SearchScreen>
       _loadingCatalog = true;
       _loadingLocation = true;
     });
-
     try {
       final catalog = await _pharmacyService.fetchCatalog();
       GeoPoint? location;
@@ -144,9 +188,7 @@ class _SearchScreenState extends State<SearchScreen>
       } catch (e) {
         debugPrint('Erreur localisation: $e');
       }
-
       if (!mounted) return;
-
       setState(() {
         _catalog = catalog;
         _filtered = catalog;
@@ -157,7 +199,7 @@ class _SearchScreenState extends State<SearchScreen>
         _loadingLocation = false;
       });
     } catch (e) {
-      debugPrint('Erreur chargement du catalogue: $e');
+      debugPrint('Erreur chargement: $e');
       if (!mounted) return;
       setState(() {
         _catalog = [];
@@ -171,23 +213,17 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Future<void> _refreshLocation() async {
-    setState(() {
-      _loadingLocation = true;
-    });
-
+    setState(() => _loadingLocation = true);
     try {
       final location = await _locationService.tryGetCurrentPosition();
       if (!mounted) return;
-
       setState(() {
         _userLocation = location;
         _locationUnavailable = location == null;
         _loadingLocation = false;
       });
-
       _applyFilter(_searchController.text);
     } catch (e) {
-      debugPrint('Erreur rafraîchissement localisation: $e');
       if (!mounted) return;
       setState(() {
         _loadingLocation = false;
@@ -197,32 +233,20 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Future<void> _applyFilter(String query) async {
-    setState(() {
-      _isSearching = query.isNotEmpty;
-    });
-
+    setState(() => _isSearching = query.isNotEmpty);
     if (query.isEmpty) {
-      setState(() {
-        _filtered = _catalog;
-      });
+      setState(() => _filtered = _catalog);
       return;
     }
-
     if (_userLocation != null) {
-      setState(() {});
-
       try {
         final realTimeResults = await _pharmacyService.searchMedicationRealTime(
           query,
           latitude: _userLocation!.latitude,
           longitude: _userLocation!.longitude,
         );
-
-        setState(() {
-          _filtered = realTimeResults;
-        });
+        setState(() => _filtered = realTimeResults);
       } catch (e) {
-        debugPrint('Erreur recherche temps reel: $e');
         _fallbackLocalFilter(query);
       }
     } else {
@@ -234,24 +258,19 @@ class _SearchScreenState extends State<SearchScreen>
     final lower = query.toLowerCase();
     setState(() {
       _filtered = _catalog
-          .where(
-            (entry) =>
-                entry.nom.toLowerCase().contains(lower) ||
-                entry.dosage.toLowerCase().contains(lower),
-          )
+          .where((e) =>
+              e.nom.toLowerCase().contains(lower) ||
+              e.dosage.toLowerCase().contains(lower))
           .toList();
     });
   }
 
-  void _onQueryChanged(String query) {
-    _applyFilter(query);
-  }
+  void _onQueryChanged(String query) => _applyFilter(query);
 
   void _onRecentSearchSelected(String term) {
     _searchController.text = term;
-    _searchController.selection = TextSelection.fromPosition(
-      TextPosition(offset: term.length),
-    );
+    _searchController.selection =
+        TextSelection.fromPosition(TextPosition(offset: term.length));
     _applyFilter(term);
   }
 
@@ -260,170 +279,120 @@ class _SearchScreenState extends State<SearchScreen>
     _applyFilter('');
   }
 
-  StockStatus? _aggregateStatusFromList(
-    List<MedicationAvailability> availabilities,
-  ) {
-    if (availabilities.isEmpty) {
-      return null;
-    }
-    if (availabilities.any(
-      (availability) => availability.medication.status == StockStatus.enStock,
-    )) {
+  StockStatus? _aggregateStatusFromList(List<MedicationAvailability> list) {
+    if (list.isEmpty) return null;
+    if (list.any((a) => a.medication.status == StockStatus.enStock))
       return StockStatus.enStock;
-    }
-    if (availabilities.any(
-      (availability) =>
-          availability.medication.status == StockStatus.stockLimite,
-    )) {
+    if (list.any((a) => a.medication.status == StockStatus.stockLimite))
       return StockStatus.stockLimite;
-    }
-    if (availabilities.any(
-      (availability) =>
-          availability.medication.status == StockStatus.aConfirmer,
-    )) {
+    if (list.any((a) => a.medication.status == StockStatus.aConfirmer))
       return StockStatus.aConfirmer;
-    }
     return StockStatus.rupture;
   }
 
   Color _statusColor(StockStatus? status) {
     switch (status) {
       case StockStatus.enStock:
-        return const Color(0xFF10B981);
+        return _PharmaColors.accent;
       case StockStatus.stockLimite:
-        return const Color(0xFFF59E0B);
+        return _PharmaColors.warning;
       case StockStatus.rupture:
-        return const Color(0xFFEF4444);
+        return _PharmaColors.danger;
       case StockStatus.aConfirmer:
-        return Colors.grey;
       default:
-        return Colors.grey;
+        return _PharmaColors.neutral;
+    }
+  }
+
+  Color _statusSurface(StockStatus? status) {
+    switch (status) {
+      case StockStatus.enStock:
+        return _PharmaColors.accentSurface;
+      case StockStatus.stockLimite:
+        return _PharmaColors.warningSurface;
+      case StockStatus.rupture:
+        return _PharmaColors.dangerSurface;
+      default:
+        return _PharmaColors.neutralSurface;
     }
   }
 
   double? _distanceToPharmacy(Pharmacy pharmacy) {
-    final location = _userLocation;
-    final point = pharmacy.localisation;
-    if (location == null || point == null) {
-      return null;
-    }
+    final loc = _userLocation;
+    final pt = pharmacy.localisation;
+    if (loc == null || pt == null) return null;
     return GeoUtils.haversineDistance(
-      startLat: location.latitude,
-      startLng: location.longitude,
-      endLat: point.latitude,
-      endLng: point.longitude,
+      startLat: loc.latitude,
+      startLng: loc.longitude,
+      endLat: pt.latitude,
+      endLng: pt.longitude,
     );
   }
 
   String _formatDistance(double meters) {
-    if (meters >= 1000) {
-      return '${(meters / 1000).toStringAsFixed(1)} km';
-    }
-    return '${meters.toStringAsFixed(0)} m';
-  }
-
-  String _formatRelativeTime(DateTime dateTime) {
-    final Duration diff = DateTime.now().difference(dateTime);
-    if (diff.inMinutes < 1) {
-      return "a l'instant";
-    }
-    if (diff.inMinutes < 60) {
-      return 'il y a ${diff.inMinutes} min';
-    }
-    if (diff.inHours < 24) {
-      return 'il y a ${diff.inHours} h';
-    }
-    return 'il y a ${diff.inDays} j';
+    return meters >= 1000
+        ? '${(meters / 1000).toStringAsFixed(1)} km'
+        : '${meters.toStringAsFixed(0)} m';
   }
 
   List<MedicationAvailability> _sortedAvailabilities(
-    MedicationCatalogEntry entry,
-  ) {
-    final List<MedicationAvailability> availabilities =
-        List<MedicationAvailability>.from(entry.availabilities);
-    if (_userLocation == null) {
-      return availabilities;
-    }
-    final dynamic location = _userLocation;
-    final List<MedicationAvailability> filtered = availabilities
-        .where((availability) => availability.pharmacy.localisation != null)
-        .toList();
-
+      MedicationCatalogEntry entry) {
+    if (_userLocation == null) return [];
+    final loc = _userLocation;
+    final filtered = entry.availabilities.where((a) {
+      final pt = a.pharmacy.localisation;
+      if (pt == null) return false;
+      return GeoUtils.haversineDistance(
+            startLat: loc.latitude,
+            startLng: loc.longitude,
+            endLat: pt.latitude,
+            endLng: pt.longitude,
+          ) <=
+          _nearbyRadiusMeters;
+    }).toList();
     filtered.sort((a, b) {
-      double distanceA = double.infinity;
-      double distanceB = double.infinity;
-      final pointA = a.pharmacy.localisation;
-      final pointB = b.pharmacy.localisation;
-      if (pointA != null) {
-        distanceA = GeoUtils.haversineDistance(
-          startLat: location.latitude,
-          startLng: location.longitude,
-          endLat: pointA.latitude,
-          endLng: pointA.longitude,
-        );
-      }
-      if (pointB != null) {
-        distanceB = GeoUtils.haversineDistance(
-          startLat: location.latitude,
-          startLng: location.longitude,
-          endLat: pointB.latitude,
-          endLng: pointB.longitude,
-        );
-      }
-      return distanceA.compareTo(distanceB);
+      final ptA = a.pharmacy.localisation;
+      final ptB = b.pharmacy.localisation;
+      final dA = ptA == null
+          ? double.infinity
+          : GeoUtils.haversineDistance(
+              startLat: loc.latitude,
+              startLng: loc.longitude,
+              endLat: ptA.latitude,
+              endLng: ptA.longitude,
+            );
+      final dB = ptB == null
+          ? double.infinity
+          : GeoUtils.haversineDistance(
+              startLat: loc.latitude,
+              startLng: loc.longitude,
+              endLat: ptB.latitude,
+              endLng: ptB.longitude,
+            );
+      return dA.compareTo(dB);
     });
-
-    return filtered;
+    return filtered.take(_nearbyPharmacyLimit).toList();
   }
 
   void _openMap(MedicationCatalogEntry entry) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (context) =>
-            MedicationMapPage(entry: entry, initialUserLocation: _userLocation),
-      ),
-    );
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) =>
+          MedicationMapPage(entry: entry, initialUserLocation: _userLocation),
+    ));
   }
 
   Future<void> _openDirections(Pharmacy pharmacy, {Color? accentColor}) async {
-    // Remplacement local pour ouverture directions
-    final dynamic point = pharmacy.localisation;
-    if (point == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Localisation indisponible pour cette pharmacie.'),
-          ),
-        );
-      }
+    final pt = pharmacy.localisation;
+    if (pt == null) {
+      _showSnack('Localisation indisponible pour cette pharmacie.');
       return;
     }
-
-    double destLat = 0.0;
-    double destLng = 0.0;
-    try {
-      final a = (point is Map)
-          ? (point['latitude'] ?? point['lat'])
-          : ((point as dynamic).latitude ?? (point as dynamic).lat);
-      final b = (point is Map)
-          ? (point['longitude'] ?? point['lng'] ?? point['lon'])
-          : ((point as dynamic).longitude ??
-                (point as dynamic).lng ??
-                (point as dynamic).lon);
-      if (a is num) destLat = a.toDouble();
-      if (b is num) destLng = b.toDouble();
-    } catch (_) {}
-
-    if (destLat == 0.0 || destLng == 0.0) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Coordonnées de la pharmacie indisponibles.'),
-          ),
-        );
+    final destLat = pt.latitude;
+    final destLng = pt.longitude;
+    if (destLat == 0 || destLng == 0) {
+      _showSnack('Coordonnées de la pharmacie indisponibles.');
       return;
     }
-
     dynamic userLoc = _userLocation;
     if (userLoc == null) {
       try {
@@ -431,764 +400,543 @@ class _SearchScreenState extends State<SearchScreen>
         if (userLoc != null) _userLocation = userLoc;
       } catch (_) {}
     }
-
     if (userLoc == null) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Position utilisateur introuvable.')),
-        );
+      _showSnack('Position utilisateur introuvable.');
       return;
     }
-
-    double startLat = 0.0;
-    double startLng = 0.0;
-    try {
-      final sa = (userLoc is Map)
-          ? (userLoc['latitude'] ?? userLoc['lat'])
-          : (userLoc.latitude ?? (userLoc as dynamic).lat);
-      final sb = (userLoc is Map)
-          ? (userLoc['longitude'] ?? userLoc['lng'] ?? userLoc['lon'])
-          : (userLoc.longitude ??
-                (userLoc as dynamic).lng ??
-                (userLoc as dynamic).lon);
-      if (sa is num) startLat = sa.toDouble();
-      if (sb is num) startLng = sb.toDouble();
-    } catch (_) {}
-
-    if (startLat == 0.0 || startLng == 0.0) {
-      if (mounted)
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Impossible de déterminer votre position.'),
-          ),
-        );
+    final double startLat = userLoc.latitude;
+    final double startLng = userLoc.longitude;
+    if (startLat == 0 || startLng == 0) {
+      _showSnack('Impossible de déterminer votre position.');
       return;
     }
-
     Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => InAppNavigationPage(
-          startLat: startLat,
-          startLng: startLng,
-          destLat: destLat,
-          destLng: destLng,
-          pharmacyName: pharmacy.nom,
-          accentColor: accentColor,
-        ),
-      ),
-    );
+        context,
+        MaterialPageRoute(
+            builder: (_) => InAppNavigationPage(
+                  startLat: startLat,
+                  startLng: startLng,
+                  destLat: destLat,
+                  destLng: destLng,
+                  pharmacyName: pharmacy.nom,
+                  accentColor: accentColor,
+                )));
   }
 
   String? _primaryWhatsAppNumber(Pharmacy pharmacy) {
-    final whatsapp = pharmacy.whatsapp?.trim();
-    if (whatsapp != null && whatsapp.isNotEmpty) {
-      return whatsapp;
-    }
-    final phone = pharmacy.telephone?.trim();
-    if (phone != null && phone.isNotEmpty) {
-      return phone;
-    }
+    final w = pharmacy.whatsapp?.trim();
+    if (w != null && w.isNotEmpty) return w;
+    final p = pharmacy.telephone?.trim();
+    if (p != null && p.isNotEmpty) return p;
     return null;
   }
 
   Future<void> _makePhoneCall(Pharmacy pharmacy) async {
     final phone = pharmacy.telephone?.trim();
     if (phone == null || phone.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Numero de telephone indisponible.')),
-        );
-      }
+      _showSnack('Numéro de téléphone indisponible.');
       return;
     }
-
     final launched = await launchUrl(Uri(scheme: 'tel', path: phone));
-    if (!launched && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Impossible de lancer l'appel.")),
-      );
-    }
+    if (!launched && mounted) _showSnack("Impossible de lancer l'appel.");
   }
 
   Future<void> _openWhatsAppAvailability(
-    Pharmacy pharmacy,
-    String medicationName,
-  ) async {
+      Pharmacy pharmacy, String medicationName) async {
     final phone = _primaryWhatsAppNumber(pharmacy);
     if (phone == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contact WhatsApp indisponible.')),
-        );
-      }
+      _showSnack('Contact WhatsApp indisponible.');
       return;
     }
-
-    final launched = await _whatsAppService.openAvailabilityRequest(
+    final result = await _whatsAppService.sendAvailabilityRequest(
       phoneNumber: phone,
+      pharmacyId: pharmacy.id,
       pharmacyName: pharmacy.nom,
       medicationName: medicationName,
     );
-
-    if (!mounted) {
+    if (!mounted) return;
+    if (!result.success) {
+      _showSnack(result.message ?? "Impossible d'envoyer le message WhatsApp.");
       return;
     }
-
-    if (!launched) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Impossible d'ouvrir WhatsApp.")),
+    _showSnack(result.message ?? 'Demande envoyée.');
+    if (result.conversationId != null) {
+      await _showWhatsAppConversationDialog(
+        conversationId: result.conversationId!,
+        pharmacy: pharmacy,
+        medicationName: medicationName,
       );
-      return;
     }
-
-    await _showWhatsAppReplyDialog(pharmacy, medicationName);
   }
 
-  Future<void> _showWhatsAppReplyDialog(
-    Pharmacy pharmacy,
-    String medicationName,
-  ) async {
-    final controller = TextEditingController();
+  void _showSnack(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        backgroundColor: _PharmaColors.textH1,
+      ),
+    );
+  }
 
+  Future<void> _showWhatsAppConversationDialog({
+    required String conversationId,
+    required Pharmacy pharmacy,
+    required String medicationName,
+  }) async {
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Interpreter la reponse'),
-          content: Column(
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Quand la pharmacie repond sur WhatsApp, copiez sa reponse ici.',
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _PharmaColors.whatsapp.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: FaIcon(FontAwesomeIcons.whatsapp,
+                      color: _PharmaColors.whatsapp, size: 20),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    pharmacy.nom,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: _PharmaColors.textH1,
+                    ),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.maxFinite,
+                height: 320,
+                child: StreamBuilder<WhatsAppConversation?>(
+                  stream:
+                      _whatsAppService.watchConversation(conversationId),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting)
+                      return const Center(
+                          child: CircularProgressIndicator(
+                              color: _PharmaColors.primary));
+                    final conv = snapshot.data;
+                    if (conv == null)
+                      return const Center(
+                          child: Text('Conversation introuvable.'));
+                    return ListView.builder(
+                      itemCount: conv.messages.length,
+                      itemBuilder: (_, i) => _buildWhatsAppMessageBubble(
+                        conv.messages[i],
+                        pharmacy.nom,
+                        medicationName,
+                      ),
+                    );
+                  },
+                ),
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: controller,
-                maxLines: 4,
-                decoration: const InputDecoration(
-                  hintText: 'Ex: Oui disponible a 1500 FCFA',
-                  border: OutlineInputBorder(),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('Fermer',
+                      style: TextStyle(color: _PharmaColors.primary)),
                 ),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Plus tard'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final reply = controller.text.trim();
-                if (reply.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Collez la reponse recue.')),
-                  );
-                  return;
-                }
-                Navigator.of(dialogContext).pop();
-                _showInterpretationResult(
-                  pharmacy: pharmacy,
-                  medicationName: medicationName,
-                  reply: reply,
-                );
-              },
-              child: const Text('Interpreter'),
-            ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWhatsAppMessageBubble(
+    WhatsAppConversationMessage message,
+    String pharmacyName,
+    String medicationName,
+  ) {
+    final isOut = message.direction == WhatsAppMessageDirection.outgoing;
+    final interp = !isOut
+        ? _whatsAppService.interpretPharmacyReply(message.text,
+            pharmacyName: pharmacyName, medicationName: medicationName)
+        : null;
+    return Align(
+      alignment: isOut ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        constraints: const BoxConstraints(maxWidth: 260),
+        decoration: BoxDecoration(
+          color: isOut
+              ? _PharmaColors.accentSurface
+              : _PharmaColors.neutralSurface,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isOut ? 16 : 4),
+            bottomRight: Radius.circular(isOut ? 4 : 16),
+          ),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(message.text,
+              style: const TextStyle(
+                  fontSize: 13, color: _PharmaColors.textH1, height: 1.4)),
+          if (interp != null) ...[
+            const SizedBox(height: 6),
+            Text(interp.summary,
+                style: const TextStyle(
+                    fontSize: 12,
+                    color: _PharmaColors.accent,
+                    fontWeight: FontWeight.w600)),
           ],
-        );
-      },
-    );
-
-    controller.dispose();
-  }
-
-  Future<void> _showInterpretationResult({
-    required Pharmacy pharmacy,
-    required String medicationName,
-    required String reply,
-  }) async {
-    final interpretation = _whatsAppService.interpretPharmacyReply(
-      reply,
-      pharmacyName: pharmacy.nom,
-      medicationName: medicationName,
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Reponse interpretee'),
-        content: Text(interpretation.summary),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('OK'),
-          ),
-        ],
+        ]),
       ),
     );
   }
 
-  Widget _buildStatusBadge(StockStatus status) {
-    final color = _statusColor(status);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withOpacity(0.3), width: 1),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 6),
-          Text(
-            status.label,
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
+  // ─────────────────────────────────────────────────────────────
+  // LOCATION BANNER — redesign
+  // ─────────────────────────────────────────────────────────────
   Widget _buildLocationBanner() {
     if (_loadingLocation) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFF10B981).withOpacity(0.1),
-              const Color(0xFF059669).withOpacity(0.05),
-            ],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
-        ),
-        child: Row(
-          children: const [
-            SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                color: Color(0xFF10B981),
-              ),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Localisation en cours...',
-                style: TextStyle(
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF047857),
-                ),
-              ),
-            ),
-          ],
+      return _LocationBanner(
+        icon: Icons.location_searching,
+        iconColor: _PharmaColors.primary,
+        bgColor: _PharmaColors.primarySurface,
+        borderColor: _PharmaColors.primary.withOpacity(0.2),
+        label: 'Localisation en cours…',
+        labelColor: _PharmaColors.primary,
+        trailing: const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(
+              strokeWidth: 2.5, color: _PharmaColors.primary),
         ),
       );
     }
-
     if (_userLocation != null) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              const Color(0xFF10B981).withOpacity(0.1),
-              const Color(0xFF059669).withOpacity(0.05),
-            ],
+      return _LocationBanner(
+        icon: Icons.my_location_rounded,
+        iconColor: _PharmaColors.accent,
+        bgColor: _PharmaColors.accentSurface,
+        borderColor: _PharmaColors.accent.withOpacity(0.25),
+        label: 'Localisation activée — recherche de proximité',
+        labelColor: _PharmaColors.primary,
+        trailing: GestureDetector(
+          onTap: _refreshLocation,
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _PharmaColors.accent.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.refresh_rounded,
+                color: _PharmaColors.accent, size: 18),
           ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF10B981).withOpacity(0.2)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(
-                Icons.my_location,
-                color: Color(0xFF047857),
-                size: 20,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Localisation activée',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF047857),
-                ),
-              ),
-            ),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: _refreshLocation,
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  child: const Icon(
-                    Icons.refresh,
-                    color: Color(0xFF10B981),
-                    size: 20,
-                  ),
-                ),
-              ),
-            ),
-          ],
         ),
       );
     }
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFF59E0B).withOpacity(0.1),
-            const Color(0xFFD97706).withOpacity(0.05),
-          ],
+    return _LocationBanner(
+      icon: Icons.location_off_rounded,
+      iconColor: _PharmaColors.warning,
+      bgColor: _PharmaColors.warningSurface,
+      borderColor: _PharmaColors.warning.withOpacity(0.25),
+      label: _locationUnavailable
+          ? 'Localisation indisponible'
+          : 'Activez votre localisation',
+      labelColor: _PharmaColors.warning,
+      trailing: GestureDetector(
+        onTap: _refreshLocation,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          decoration: BoxDecoration(
+            color: _PharmaColors.warning,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: const Text('Activer',
+              style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12)),
         ),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFF59E0B).withOpacity(0.2)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF59E0B).withOpacity(0.2),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.location_off,
-              color: Color(0xFFD97706),
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              _locationUnavailable
-                  ? 'Localisation indisponible'
-                  : 'Activez votre localisation',
-              style: const TextStyle(
-                fontWeight: FontWeight.w500,
-                color: Color(0xFFD97706),
-              ),
-            ),
-          ),
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _refreshLocation,
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF59E0B).withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'Activer',
-                  style: TextStyle(
-                    color: Color(0xFFD97706),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // PHARMACY CARD (availability tile) — redesign premium
+  // ─────────────────────────────────────────────────────────────
   Widget _buildAvailabilityTiles(
     MedicationCatalogEntry entry,
     List<MedicationAvailability> availabilities,
   ) {
     if (availabilities.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
         child: Center(
-          child: Column(
-            children: [
-              Icon(Icons.search_off, size: 48, color: Colors.grey[400]),
-              const SizedBox(height: 12),
-              Text(
-                'Aucune pharmacie Firebase trouvee',
-                style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                textAlign: TextAlign.center,
+          child: Column(children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _PharmaColors.neutralSurface,
+                shape: BoxShape.circle,
               ),
-            ],
-          ),
+              child: const Icon(Icons.search_off_rounded,
+                  size: 36, color: _PharmaColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            const Text('Aucune pharmacie trouvée à proximité',
+                style: TextStyle(
+                    color: _PharmaColors.textBody,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500)),
+          ]),
         ),
       );
     }
 
     return Column(
-      children: availabilities.asMap().entries.map((mapEntry) {
-        final index = mapEntry.key;
-        final availability = mapEntry.value;
-        final pharmacy = availability.pharmacy;
-        final medication = availability.medication;
+      children: availabilities.asMap().entries.map((e) {
+        final idx = e.key;
+        final avail = e.value;
+        final pharmacy = avail.pharmacy;
+        final med = avail.medication;
         final distance = _distanceToPharmacy(pharmacy);
         final hasPhone = pharmacy.telephone?.trim().isNotEmpty == true;
-        final hasWhatsApp = _primaryWhatsAppNumber(pharmacy) != null;
+        final hasWA = _primaryWhatsAppNumber(pharmacy) != null;
 
-        // Determine status label & color for badge
-        String statusLabel;
-        Color statusBadgeColor;
-        IconData statusIcon;
-        switch (medication.status) {
+        // Status config
+        late String statusLabel;
+        late Color statusColor;
+        late Color statusSurface;
+        late IconData statusIcon;
+        switch (med.status) {
           case StockStatus.enStock:
-            statusLabel = 'DISPONIBLE';
-            statusBadgeColor = const Color(0xFF059669);
-            statusIcon = Icons.check_circle;
+            statusLabel = 'Disponible';
+            statusColor = _PharmaColors.accent;
+            statusSurface = _PharmaColors.accentSurface;
+            statusIcon = Icons.check_circle_rounded;
             break;
           case StockStatus.stockLimite:
-            statusLabel = 'STOCK LIMITÉ';
-            statusBadgeColor = const Color(0xFFF59E0B);
-            statusIcon = Icons.warning_rounded;
+            statusLabel = 'Stock limité';
+            statusColor = _PharmaColors.warning;
+            statusSurface = _PharmaColors.warningSurface;
+            statusIcon = Icons.warning_amber_rounded;
             break;
           case StockStatus.rupture:
-            statusLabel = 'RUPTURE';
-            statusBadgeColor = const Color(0xFFEF4444);
-            statusIcon = Icons.cancel;
+            statusLabel = 'Rupture';
+            statusColor = _PharmaColors.danger;
+            statusSurface = _PharmaColors.dangerSurface;
+            statusIcon = Icons.cancel_rounded;
             break;
-          case StockStatus.aConfirmer:
           default:
-            statusLabel = 'DISPONIBLE';
-            statusBadgeColor = const Color(0xFF059669);
-            statusIcon = Icons.check_circle;
-            break;
+            statusLabel = 'À confirmer';
+            statusColor = _PharmaColors.neutral;
+            statusSurface = _PharmaColors.neutralSurface;
+            statusIcon = Icons.help_outline_rounded;
         }
 
         return TweenAnimationBuilder<double>(
           tween: Tween(begin: 0.0, end: 1.0),
-          curve: Curves.easeOut,
-          duration: Duration(milliseconds: 300 + (index * 80)),
-          builder: (context, value, child) {
-            return Transform.translate(
-              offset: Offset(0, 15 * (1 - value)),
-              child: Opacity(opacity: value, child: child),
-            );
-          },
+          curve: Curves.easeOutCubic,
+          duration: Duration(milliseconds: 280 + idx * 70),
+          builder: (context, v, child) => Transform.translate(
+            offset: Offset(0, 18 * (1 - v)),
+            child: Opacity(opacity: v, child: child),
+          ),
           child: Container(
-            margin: const EdgeInsets.only(bottom: 16, left: 16, right: 16),
+            margin: const EdgeInsets.only(left: 16, right: 16, bottom: 14),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
+              color: _PharmaColors.cardBg,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _PharmaColors.border, width: 1),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
-                  blurRadius: 16,
-                  offset: const Offset(0, 4),
-                ),
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.02),
-                  blurRadius: 4,
-                  offset: const Offset(0, 1),
+                  color: _PharmaColors.primary.withOpacity(0.06),
+                  blurRadius: 20,
+                  offset: const Offset(0, 6),
                 ),
               ],
             ),
-            child: Stack(
-              clipBehavior: Clip.none,
+            child: Column(
               children: [
+                // ── Status accent strip
+                Container(
+                  height: 4,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [statusColor, statusColor.withOpacity(0.4)],
+                    ),
+                    borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(20)),
+                  ),
+                ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                  padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // ── Pharmacy Name (centered) ──
-                      Text(
-                        pharmacy.nom,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 17,
-                          color: Color(0xFF1E293B),
-                          letterSpacing: -0.2,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-
-                      // ── Address (centered, lighter) ──
-                      Text(
-                        pharmacy.adresse ?? 'Adresse indisponible',
-                        style: const TextStyle(
-                          color: Color(0xFF94A3B8),
-                          fontSize: 13,
-                          fontWeight: FontWeight.w400,
-                        ),
-                        textAlign: TextAlign.center,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 14),
-
-                      // ── Status + Price badges row ──
+                      // ── Header row: name + distance pill
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Status badge
+                          // Pharmacy avatar icon
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
+                            width: 44,
+                            height: 44,
                             decoration: BoxDecoration(
-                              color: statusBadgeColor.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(20),
+                              color: _PharmaColors.primarySurface,
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                            child: const Icon(Icons.local_pharmacy_rounded,
+                                color: _PharmaColors.primary, size: 24),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Icon(
-                                  statusIcon,
-                                  size: 14,
-                                  color: statusBadgeColor,
-                                ),
-                                const SizedBox(width: 5),
                                 Text(
-                                  statusLabel,
-                                  style: TextStyle(
-                                    color: statusBadgeColor,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 11,
-                                    letterSpacing: 0.3,
+                                  pharmacy.nom,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 15,
+                                    color: _PharmaColors.textH1,
+                                    letterSpacing: -0.3,
                                   ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
+                                const SizedBox(height: 3),
+                                Row(children: [
+                                  const Icon(Icons.place_rounded,
+                                      size: 12, color: _PharmaColors.textMuted),
+                                  const SizedBox(width: 3),
+                                  Expanded(
+                                    child: Text(
+                                      pharmacy.adresse ?? 'Adresse non renseignée',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: _PharmaColors.textMuted),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ]),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          // Price badge
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(
-                                color: const Color(0xFFE2E8F0),
-                                width: 1,
-                              ),
-                            ),
-                            child: Text(
-                              medication.prix > 0
-                                  ? '${medication.prix.toStringAsFixed(0)} FCFA'
-                                  : 'Prix à confirmer',
-                              style: const TextStyle(
-                                color: Color(0xFF64748B),
-                                fontWeight: FontWeight.w600,
-                                fontSize: 11,
-                              ),
-                            ),
-                          ),
+                          if (distance != null) ...[
+                            const SizedBox(width: 8),
+                            _DistancePill(label: _formatDistance(distance)),
+                          ],
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
 
-                      // ── Action buttons row: Itinéraire + Appeler + WhatsApp FAB ──
-                      Row(
-                        children: [
-                          // Itinéraire button
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: () => _openDirections(
-                                pharmacy,
-                                accentColor: statusBadgeColor,
-                              ),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 11,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8FAFB),
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: const Color(0xFFE2E8F0),
-                                    width: 1.2,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.route_rounded,
-                                      size: 16,
-                                      color: statusBadgeColor,
-                                    ),
-                                    const SizedBox(width: 6),
-                                    const Text(
-                                      'Itinéraire',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: Color(0xFF334155),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
+                      // ── Divider
+                      Divider(color: _PharmaColors.border, height: 1),
+                      const SizedBox(height: 14),
+
+                      // ── Status + Price row
+                      Row(children: [
+                        // Status badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: statusSurface,
+                            borderRadius: BorderRadius.circular(20),
                           ),
-                          const SizedBox(width: 10),
-                          // Appeler button
-                          Expanded(
-                            child: GestureDetector(
-                              onTap: hasPhone
-                                  ? () => _makePhoneCall(pharmacy)
-                                  : null,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 11,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8FAFB),
-                                  borderRadius: BorderRadius.circular(24),
-                                  border: Border.all(
-                                    color: const Color(0xFFE2E8F0),
-                                    width: 1.2,
-                                  ),
-                                ),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.phone,
-                                      size: 16,
-                                      color: hasPhone
-                                          ? const Color(0xFF334155)
-                                          : const Color(0xFFCBD5E1),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      'Appeler',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: hasPhone
-                                            ? const Color(0xFF334155)
-                                            : const Color(0xFFCBD5E1),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
+                          child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(statusIcon,
+                                    size: 13, color: statusColor),
+                                const SizedBox(width: 5),
+                                Text(statusLabel,
+                                    style: TextStyle(
+                                        color: statusColor,
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 11,
+                                        letterSpacing: 0.2)),
+                              ]),
+                        ),
+                        const Spacer(),
+                        // Price
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _PharmaColors.neutralSurface,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: _PharmaColors.border, width: 1),
                           ),
-                          const SizedBox(width: 10),
-                          // WhatsApp floating circle button
-                          GestureDetector(
-                            onTap: hasWhatsApp
-                                ? () => _openWhatsAppAvailability(
-                                    pharmacy,
-                                    entry.nom,
-                                  )
+                          child: Text(
+                            med.prix > 0
+                                ? '${med.prix.toStringAsFixed(0)} FCFA'
+                                : 'Prix à confirmer',
+                            style: const TextStyle(
+                                color: _PharmaColors.textBody,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11),
+                          ),
+                        ),
+                      ]),
+                      const SizedBox(height: 14),
+
+                      // ── Action buttons
+                      Row(children: [
+                        // Itinéraire
+                        Expanded(
+                          child: _ActionButton(
+                            icon: Icons.route_rounded,
+                            label: 'Itinéraire',
+                            foreground: _PharmaColors.primary,
+                            background: _PharmaColors.primarySurface,
+                            onTap: () =>
+                                _openDirections(pharmacy, accentColor: statusColor),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        // Appeler
+                        Expanded(
+                          child: _ActionButton(
+                            icon: Icons.phone_rounded,
+                            label: 'Appeler',
+                            foreground: hasPhone
+                                ? _PharmaColors.textBody
+                                : _PharmaColors.textMuted,
+                            background: _PharmaColors.neutralSurface,
+                            onTap: hasPhone
+                                ? () => _makePhoneCall(pharmacy)
                                 : null,
-                            child: Container(
-                              width: 46,
-                              height: 46,
-                              decoration: BoxDecoration(
-                                color: hasWhatsApp
-                                    ? const Color(0xFF25D366)
-                                    : const Color(0xFFE0E0E0),
-                                shape: BoxShape.circle,
-                                boxShadow: hasWhatsApp
-                                    ? [
-                                        BoxShadow(
-                                          color: const Color(
-                                            0xFF25D366,
-                                          ).withOpacity(0.35),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ]
-                                    : [],
-                              ),
-                              child: const Center(
-                                child: FaIcon(
-                                  FontAwesomeIcons.whatsapp,
-                                  color: Colors.white,
-                                  size: 22,
-                                ),
-                              ),
-                            ),
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 10),
+                        // WhatsApp circle
+                        _WhatsAppButton(
+                          active: hasWA,
+                          onTap: hasWA
+                              ? () => _openWhatsAppAvailability(
+                                  pharmacy, entry.nom)
+                              : null,
+                        ),
+                      ]),
                     ],
                   ),
                 ),
-
-                // ── Distance badge (top-right floating pill) ──
-                if (distance != null)
-                  Positioned(
-                    top: 14,
-                    right: 14,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF059669),
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF059669).withOpacity(0.3),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: Text(
-                        _formatDistance(distance),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ),
               ],
             ),
           ),
@@ -1197,30 +945,35 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // SEARCH RESULTS
+  // ─────────────────────────────────────────────────────────────
   Widget _buildSearchResults() {
     if (_filtered.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.all(40),
+        padding: const EdgeInsets.symmetric(vertical: 48),
         child: Center(
-          child: Column(
-            children: [
-              Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
-              const SizedBox(height: 16),
-              Text(
-                'Aucun médicament trouvé',
+          child: Column(children: [
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: _PharmaColors.primarySurface,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.search_off_rounded,
+                  size: 48, color: _PharmaColors.primary),
+            ),
+            const SizedBox(height: 16),
+            const Text('Aucun médicament trouvé',
                 style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[600],
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Essayez avec un autre terme de recherche',
-                style: TextStyle(fontSize: 14, color: Colors.grey[500]),
-              ),
-            ],
-          ),
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: _PharmaColors.textH1)),
+            const SizedBox(height: 6),
+            const Text('Essayez un autre terme de recherche',
+                style:
+                    TextStyle(fontSize: 13, color: _PharmaColors.textBody)),
+          ]),
         ),
       );
     }
@@ -1229,317 +982,232 @@ class _SearchScreenState extends State<SearchScreen>
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _filtered.length,
-      separatorBuilder: (context, index) => const SizedBox(height: 12),
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
       itemBuilder: (context, index) {
         final entry = _filtered[index];
         final availabilities = _sortedAvailabilities(entry);
         final status = _aggregateStatusFromList(availabilities);
-        final color = _statusColor(status);
+        final statusColor = _statusColor(status);
+        final statusSurface = _statusSurface(status);
 
-        return Card(
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: Colors.grey[200]!),
-          ),
-          child: Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              tilePadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              childrenPadding: const EdgeInsets.only(bottom: 12),
-              leading: Container(
-                width: 4,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              title: Text(
-                entry.nom,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 15,
-                  color: Color(0xFF1F2937),
-                ),
-              ),
-              subtitle: Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        entry.dosage,
-                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF10B981).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '${availabilities.length} pharmacies',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF047857),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              children: [
-                if (_userLocation != null && availabilities.isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF3C7),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFFDE68A)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          size: 20,
-                          color: Colors.amber[800],
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            "Pharmacies chargees depuis Firebase. Confirmez disponibilite et prix via WhatsApp.",
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.amber[900],
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (_userLocation == null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: Text(
-                      'Activez la localisation pour trier les pharmacies par distance.',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                    ),
-                  ),
-                if (_userLocation != null && availabilities.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: Text(
-                      'Aucune pharmacie Firebase active trouvee.',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                    ),
-                  ),
-                if (availabilities.isNotEmpty)
-                  _buildAvailabilityTiles(entry, availabilities),
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 48,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _openMap(entry),
-                      icon: const Icon(Icons.map_outlined, size: 20),
-                      label: const Text(
-                        'Voir sur la carte',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        return _MedExpansionCard(
+          entry: entry,
+          availabilities: availabilities,
+          statusColor: statusColor,
+          statusSurface: statusSurface,
+          userLocation: _userLocation,
+          availabilityBuilder: () =>
+              _buildAvailabilityTiles(entry, availabilities),
+          onOpenMap: () => _openMap(entry),
         );
       },
     );
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // HISTORY LIST
+  // ─────────────────────────────────────────────────────────────
   Widget _buildHistoryList() {
     return ValueListenableBuilder<List<String>>(
       valueListenable: HistoryService.instance.history,
       builder: (context, history, _) {
         if (history.isEmpty) {
           return Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(vertical: 24),
             child: Center(
-              child: Column(
-                children: [
-                  Icon(Icons.history, size: 48, color: Colors.grey[300]),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Aucune recherche récente',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 14),
-                  ),
-                ],
-              ),
+              child: Column(children: [
+                Icon(Icons.history_rounded,
+                    size: 40, color: _PharmaColors.textMuted),
+                const SizedBox(height: 10),
+                const Text('Aucune recherche récente',
+                    style: TextStyle(
+                        color: _PharmaColors.textMuted, fontSize: 13)),
+              ]),
             ),
           );
         }
-
-        return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: history.length,
-          separatorBuilder: (context, index) => const SizedBox(height: 6),
-          itemBuilder: (context, index) {
-            final entry = history[index];
-            final parts = entry.split(':');
+        return Column(
+          children: history.asMap().entries.map((e) {
+            final raw = e.value;
+            final parts = raw.split(':');
             final source = parts.isNotEmpty ? parts.first : 'Recherche';
-            final term = parts.length > 1 ? parts.sublist(1).join(':') : entry;
+            final term =
+                parts.length > 1 ? parts.sublist(1).join(':') : raw;
+            final isScan = source == 'Cadnet';
 
-            final IconData icon = source == 'Scanner'
-                ? Icons.document_scanner_outlined
-                : Icons.history;
-
-            return Container(
-              decoration: BoxDecoration(
-                color: Colors.grey[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey[200]!),
-              ),
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 4,
-                ),
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: const Color(0xFF10B981), size: 20),
-                ),
-                title: Text(
-                  term,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
-                    color: Color(0xFF1F2937),
-                  ),
-                ),
-                subtitle: Text(
-                  source,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-                onTap: () => _onRecentSearchSelected(term),
-                trailing: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => HistoryService.instance.remove(entry),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: Icon(
-                        Icons.close,
-                        size: 18,
-                        color: Colors.grey[400],
-                      ),
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Material(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(14),
+                  onTap: () => _onRecentSearchSelected(term),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _PharmaColors.cardBg,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                          color: _PharmaColors.border, width: 1),
                     ),
+                    child: Row(children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: isScan
+                              ? _PharmaColors.primarySurface
+                              : _PharmaColors.neutralSurface,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          isScan
+                              ? Icons.document_scanner_rounded
+                              : Icons.history_rounded,
+                          color: isScan
+                              ? _PharmaColors.primary
+                              : _PharmaColors.neutral,
+                          size: 18,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(term,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14,
+                                    color: _PharmaColors.textH1)),
+                            Text(source,
+                                style: const TextStyle(
+                                    fontSize: 11,
+                                    color: _PharmaColors.textMuted)),
+                          ],
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () =>
+                            HistoryService.instance.remove(raw),
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: _PharmaColors.neutralSurface,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.close,
+                              size: 14,
+                              color: _PharmaColors.textMuted),
+                        ),
+                      ),
+                    ]),
                   ),
                 ),
               ),
             );
-          },
+          }).toList(),
         );
       },
     );
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // BUILD
+  // ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: Container(
-            padding: const EdgeInsets.all(8),
+      backgroundColor: _PharmaColors.surface,
+      appBar: _buildAppBar(),
+      body: _loadingCatalog
+          ? _buildLoadingState()
+          : _buildBody(),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: _PharmaColors.cardBg,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      surfaceTintColor: Colors.transparent,
+      bottom: PreferredSize(
+        preferredSize: const Size.fromHeight(1),
+        child: Divider(
+            height: 1, color: _PharmaColors.border, thickness: 1),
+      ),
+      leading: Padding(
+        padding: const EdgeInsets.all(10),
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Container(
             decoration: BoxDecoration(
-              color: Colors.grey[100],
+              color: _PharmaColors.neutralSurface,
               borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _PharmaColors.border),
             ),
-            child: const Icon(
-              Icons.arrow_back_ios_new,
-              color: Colors.black87,
-              size: 18,
-            ),
+            child: const Icon(Icons.arrow_back_ios_new_rounded,
+                size: 16, color: _PharmaColors.textH1),
           ),
-          onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          IconButton(
-            icon: Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.account_circle_outlined,
-                color: Colors.black87,
-                size: 22,
-              ),
-            ),
-            onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SettingsScreen(userName: ''),
-                ),
-              );
-            },
+      ),
+      title: Row(children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [
+              _PharmaColors.primary,
+              _PharmaColors.accent,
+            ]),
+            borderRadius: BorderRadius.circular(8),
           ),
-          IconButton(
+          child: const Icon(Icons.local_pharmacy_rounded,
+              color: Colors.white, size: 18),
+        ),
+        const SizedBox(width: 10),
+        const Text(
+          'pharma',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+            color: _PharmaColors.textH1,
+            letterSpacing: -0.5,
+          ),
+        ),
+      ]),
+      actions: [
+        IconButton(
+          icon: Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: _PharmaColors.neutralSurface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: _PharmaColors.border),
+            ),
+            child: const Icon(Icons.account_circle_outlined,
+                color: _PharmaColors.textBody, size: 20),
+          ),
+          onPressed: () => Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+                builder: (_) => const SettingsScreen(userName: '')),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(right: 12),
+          child: IconButton(
             icon: Container(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(7),
               decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withOpacity(0.1),
+                color: _PharmaColors.primarySurface,
                 borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                    color: _PharmaColors.primary.withOpacity(0.2)),
               ),
-              child: const Icon(
-                Icons.refresh,
-                color: Color(0xFF10B981),
-                size: 22,
-              ),
+              child: const Icon(Icons.refresh_rounded,
+                  color: _PharmaColors.primary, size: 20),
             ),
             tooltip: 'Recharger',
             onPressed: () async {
@@ -1547,279 +1215,697 @@ class _SearchScreenState extends State<SearchScreen>
               await _initialize();
             },
           ),
-          const SizedBox(width: 10),
-        ],
-      ),
-      body: _loadingCatalog
-          ? const Center(
-              child: CircularProgressIndicator(color: Color(0xFF10B981)),
-            )
-          : SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Column(
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: _PharmaColors.primarySurface,
+                shape: BoxShape.circle,
+              ),
+              child: const CircularProgressIndicator(
+                  color: _PharmaColors.primary, strokeWidth: 3),
+            ),
+            const SizedBox(height: 16),
+            const Text('Chargement du catalogue…',
+                style: TextStyle(
+                    color: _PharmaColors.textBody,
+                    fontWeight: FontWeight.w500)),
+          ]),
+    );
+  }
+
+  Widget _buildBody() {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const SizedBox(height: 24),
+
+          // ── Page header
+          _buildPageHeader(),
+          const SizedBox(height: 20),
+
+          // ── Location banner
+          _buildLocationBanner(),
+          const SizedBox(height: 20),
+
+          // ── Search bar + action button
+          _buildSearchRow(),
+          const SizedBox(height: 16),
+
+          // ── Scanner CTA
+          _buildScannerCTA(),
+          const SizedBox(height: 32),
+
+          // ── Section title
+          _buildSectionTitle(),
+          const SizedBox(height: 16),
+
+          // ── Content
+          _isSearching
+              ? _buildSearchResults()
+              : Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Recherche de Médicaments',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF1F2937),
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildLocationBanner(),
-                    const SizedBox(height: 24),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(16),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.05),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 2),
-                                ),
-                              ],
-                            ),
-                            child: TextField(
-                              controller: _searchController,
-                              onChanged: _onQueryChanged,
-                              onSubmitted: (value) {
-                                if (value.trim().isNotEmpty) {
-                                  HistoryService.instance.add(value);
-                                  _applyFilter(value);
-                                }
-                              },
-                              style: const TextStyle(fontSize: 15),
-                              decoration: InputDecoration(
-                                hintText: 'Rechercher un médicament...',
-                                hintStyle: TextStyle(
-                                  color: Colors.grey[400],
-                                  fontSize: 15,
-                                ),
-                                prefixIcon: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Icon(
-                                    Icons.search,
-                                    color: Colors.grey[400],
-                                    size: 24,
-                                  ),
-                                ),
-                                suffixIcon: _isSearching
-                                    ? Material(
-                                        color: Colors.transparent,
-                                        child: InkWell(
-                                          borderRadius: BorderRadius.circular(
-                                            20,
-                                          ),
-                                          onTap: _clearSearch,
-                                          child: Padding(
-                                            padding: const EdgeInsets.all(12),
-                                            child: Icon(
-                                              Icons.close,
-                                              color: Colors.grey[400],
-                                              size: 20,
-                                            ),
-                                          ),
-                                        ),
-                                      )
-                                    : null,
-                                filled: true,
-                                fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 16,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide(
-                                    color: Colors.grey[200]!,
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFF10B981),
-                                    width: 2,
-                                  ),
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              if (_searchController.text.trim().isNotEmpty) {
-                                HistoryService.instance.add(
-                                  _searchController.text,
-                                );
-                                _applyFilter(_searchController.text);
-                                FocusScope.of(context).unfocus();
-                              } else {
-                                _listen();
-                              }
-                            },
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: _isListening
-                                      ? [
-                                          const Color(0xFFEF4444),
-                                          const Color(0xFFDC2626),
-                                        ]
-                                      : (_searchController.text.isNotEmpty
-                                            ? [
-                                                const Color(0xFF10B981),
-                                                const Color(0xFF059669),
-                                              ]
-                                            : [
-                                                const Color(0xFF10B981),
-                                                const Color(0xFF059669),
-                                              ]),
-                                ),
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color:
-                                        (_isListening
-                                                ? const Color(0xFFEF4444)
-                                                : const Color(0xFF10B981))
-                                            .withOpacity(0.3),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Icon(
-                                _isListening
-                                    ? Icons.stop_rounded
-                                    : (_searchController.text.isNotEmpty
-                                          ? Icons.send_rounded
-                                          : Icons.mic),
-                                color: Colors.white,
-                                size: 24,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            const Color(0xFF10B981).withOpacity(0.9),
-                            const Color(0xFF059669),
-                          ],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF10B981).withOpacity(0.3),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () async {
-                            final result = await Navigator.push<List<String>>(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ScannerPage(),
-                              ),
-                            );
-
-                            // Si des médicaments ont été retournés, les afficher
-                            if (result != null && result.isNotEmpty) {
-                              final searchText = result.join(', ');
-                              _searchController.text = searchText;
-                              _applyFilter(searchText);
-                            }
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 18),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: const [
-                                Icon(
-                                  Icons.camera_alt_outlined,
-                                  color: Colors.white,
-                                  size: 24,
-                                ),
-                                SizedBox(width: 12),
-                                Text(
-                                  'Scanner une ordonnance',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.3,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 32),
-                    Text(
-                      _isSearching
-                          ? 'Résultats trouvés'
-                          : 'Recherches récentes',
-                      style: const TextStyle(
-                        color: Color(0xFF1F2937),
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.3,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    _isSearching
-                        ? _buildSearchResults()
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildHistoryList(),
-                              const SizedBox(height: 32),
-                              const Text(
-                                'Médicaments disponibles',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1F2937),
-                                  letterSpacing: -0.3,
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              _buildSearchResults(),
-                            ],
-                          ),
-                    const SizedBox(height: 40),
+                    _buildHistoryList(),
+                    const SizedBox(height: 28),
+                    _buildSubSectionTitle('Médicaments disponibles'),
+                    const SizedBox(height: 14),
+                    _buildSearchResults(),
                   ],
                 ),
+
+          const SizedBox(height: 48),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildPageHeader() {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text(
+        'Trouvez votre\nmédicament',
+        style: TextStyle(
+          fontSize: 28,
+          fontWeight: FontWeight.w800,
+          color: _PharmaColors.textH1,
+          height: 1.2,
+          letterSpacing: -0.8,
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        'Disponibilité en temps réel dans les pharmacies proches de vous',
+        style: TextStyle(
+          fontSize: 13,
+          color: _PharmaColors.textBody,
+          height: 1.4,
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildSearchRow() {
+    return Row(children: [
+      Expanded(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          decoration: BoxDecoration(
+            color: _PharmaColors.cardBg,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _searchFocused
+                  ? _PharmaColors.primary
+                  : _PharmaColors.border,
+              width: _searchFocused ? 1.5 : 1,
+            ),
+            boxShadow: _searchFocused
+                ? [
+                    BoxShadow(
+                      color: _PharmaColors.primary.withOpacity(0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ]
+                : [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+          ),
+          child: TextField(
+            controller: _searchController,
+            focusNode: _searchFocusNode,
+            onChanged: _onQueryChanged,
+            onSubmitted: (v) {
+              if (v.trim().isNotEmpty) {
+                HistoryService.instance.add(v);
+                _applyFilter(v);
+              }
+            },
+            style: const TextStyle(
+                fontSize: 15, color: _PharmaColors.textH1),
+            decoration: InputDecoration(
+              hintText: 'Nom du médicament, dosage…',
+              hintStyle: const TextStyle(
+                  color: _PharmaColors.textMuted, fontSize: 14),
+              prefixIcon: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Icon(Icons.search_rounded,
+                    color: _searchFocused
+                        ? _PharmaColors.primary
+                        : _PharmaColors.textMuted,
+                    size: 22),
+              ),
+              suffixIcon: _isSearching
+                  ? GestureDetector(
+                      onTap: _clearSearch,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: BoxDecoration(
+                            color: _PharmaColors.neutralSurface,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.close,
+                              size: 14, color: _PharmaColors.textBody),
+                        ),
+                      ),
+                    )
+                  : null,
+              filled: true,
+              fillColor: Colors.transparent,
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 16),
+              border: InputBorder.none,
+              enabledBorder: InputBorder.none,
+              focusedBorder: InputBorder.none,
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      _buildSearchActionButton(),
+    ]);
+  }
+
+  Widget _buildSearchActionButton() {
+    final isActive = _isListening;
+    final hasTerm = _searchController.text.isNotEmpty;
+    return GestureDetector(
+      onTap: () {
+        if (hasTerm && !_isListening) {
+          HistoryService.instance.add(_searchController.text);
+          _applyFilter(_searchController.text);
+          FocusScope.of(context).unfocus();
+        } else {
+          _listen();
+        }
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 54,
+        height: 54,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isActive
+                ? [_PharmaColors.danger, const Color(0xFFD94040)]
+                : hasTerm
+                    ? [_PharmaColors.accent, _PharmaColors.primary]
+                    : [_PharmaColors.primary, _PharmaColors.primaryLight],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: (isActive ? _PharmaColors.danger : _PharmaColors.primary)
+                  .withOpacity(0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Icon(
+          isActive
+              ? Icons.stop_rounded
+              : hasTerm
+                  ? Icons.send_rounded
+                  : Icons.mic_rounded,
+          color: Colors.white,
+          size: 22,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScannerCTA() {
+    return GestureDetector(
+      onTap: () async {
+        final result = await Navigator.push<List<String>>(
+          context,
+          MaterialPageRoute(builder: (_) => const ScannerPage()),
+        );
+        if (result != null && result.isNotEmpty) {
+          final text = result.join(', ');
+          _searchController.text = text;
+          _applyFilter(text);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+        decoration: BoxDecoration(
+          color: _PharmaColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+              color: _PharmaColors.primary.withOpacity(0.3), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: _PharmaColors.primary.withOpacity(0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [_PharmaColors.primary, _PharmaColors.accent],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.document_scanner_rounded,
+                color: Colors.white, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Text(
+                  'Importer un Cadnet',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: _PharmaColors.textH1,
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Scannez votre ordonnance pour rechercher automatiquement',
+                  style: TextStyle(
+                      fontSize: 11, color: _PharmaColors.textBody),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: _PharmaColors.primarySurface,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.arrow_forward_ios_rounded,
+                size: 14, color: _PharmaColors.primary),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle() {
+    return Row(children: [
+      Container(
+        width: 4,
+        height: 22,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [_PharmaColors.primary, _PharmaColors.accent],
+          ),
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+      const SizedBox(width: 10),
+      Text(
+        _isSearching ? 'Résultats de recherche' : 'Recherches récentes',
+        style: const TextStyle(
+          fontSize: 18,
+          fontWeight: FontWeight.w800,
+          color: _PharmaColors.textH1,
+          letterSpacing: -0.4,
+        ),
+      ),
+    ]);
+  }
+
+  Widget _buildSubSectionTitle(String title) {
+    return Row(children: [
+      Container(
+        width: 4,
+        height: 20,
+        decoration: BoxDecoration(
+          color: _PharmaColors.accent,
+          borderRadius: BorderRadius.circular(2),
+        ),
+      ),
+      const SizedBox(width: 10),
+      Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: _PharmaColors.textH1,
+          letterSpacing: -0.3,
+        ),
+      ),
+    ]);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// COMPOSANTS HELPER
+// ─────────────────────────────────────────────────────────────
+
+class _LocationBanner extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final Color bgColor;
+  final Color borderColor;
+  final String label;
+  final Color labelColor;
+  final Widget trailing;
+
+  const _LocationBanner({
+    required this.icon,
+    required this.iconColor,
+    required this.bgColor,
+    required this.borderColor,
+    required this.label,
+    required this.labelColor,
+    required this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor, width: 1),
+      ),
+      child: Row(children: [
+        Icon(icon, color: iconColor, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: labelColor)),
+        ),
+        trailing,
+      ]),
+    );
+  }
+}
+
+class _DistancePill extends StatelessWidget {
+  final String label;
+  const _DistancePill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [_PharmaColors.primary, _PharmaColors.accent],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: _PharmaColors.primary.withOpacity(0.25),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.near_me_rounded, size: 10, color: Colors.white),
+        const SizedBox(width: 4),
+        Text(label,
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 11)),
+      ]),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color foreground;
+  final Color background;
+  final VoidCallback? onTap;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.foreground,
+    required this.background,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: _PharmaColors.border, width: 1),
+        ),
+        child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(icon, size: 15, color: foreground),
+          const SizedBox(width: 6),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: foreground)),
+        ]),
+      ),
+    );
+  }
+}
+
+class _WhatsAppButton extends StatelessWidget {
+  final bool active;
+  final VoidCallback? onTap;
+  const _WhatsAppButton({required this.active, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color:
+              active ? _PharmaColors.whatsapp : _PharmaColors.neutralSurface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: active
+                  ? _PharmaColors.whatsapp.withOpacity(0.3)
+                  : _PharmaColors.border,
+              width: 1),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: _PharmaColors.whatsapp.withOpacity(0.3),
+                    blurRadius: 10,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : [],
+        ),
+        child: Center(
+          child: FaIcon(FontAwesomeIcons.whatsapp,
+              color: active ? Colors.white : _PharmaColors.textMuted,
+              size: 20),
+        ),
+      ),
+    );
+  }
+}
+
+class _MedExpansionCard extends StatelessWidget {
+  final MedicationCatalogEntry entry;
+  final List<MedicationAvailability> availabilities;
+  final Color statusColor;
+  final Color statusSurface;
+  final dynamic userLocation;
+  final Widget Function() availabilityBuilder;
+  final VoidCallback onOpenMap;
+
+  const _MedExpansionCard({
+    required this.entry,
+    required this.availabilities,
+    required this.statusColor,
+    required this.statusSurface,
+    required this.userLocation,
+    required this.availabilityBuilder,
+    required this.onOpenMap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: _PharmaColors.cardBg,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _PharmaColors.border, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Theme(
+          data: Theme.of(context)
+              .copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            childrenPadding: const EdgeInsets.only(bottom: 14),
+            leading: Container(
+              width: 5,
+              height: 48,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [statusColor, statusColor.withOpacity(0.3)],
+                ),
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
+            title: Text(
+              entry.nom,
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 15,
+                color: _PharmaColors.textH1,
+                letterSpacing: -0.2,
+              ),
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Row(children: [
+                Flexible(
+                  child: Text(entry.dosage,
+                      style: const TextStyle(
+                          color: _PharmaColors.textBody, fontSize: 12)),
+                ),
+                const SizedBox(width: 10),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _PharmaColors.primarySurface,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.store_rounded,
+                        size: 11, color: _PharmaColors.primary),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${availabilities.length} pharmacie${availabilities.length > 1 ? 's' : ''}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _PharmaColors.primary,
+                      ),
+                    ),
+                  ]),
+                ),
+              ]),
+            ),
+            children: [
+              if (userLocation != null && availabilities.isNotEmpty)
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: _PharmaColors.warningSurface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color:
+                              _PharmaColors.warning.withOpacity(0.3)),
+                    ),
+                    child: Row(children: [
+                      const Icon(Icons.info_outline_rounded,
+                          size: 16, color: _PharmaColors.warning),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Prix et disponibilité affichés par pharmacie à proximité.',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: _PharmaColors.warning,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ]),
+                  ),
+                ),
+              if (userLocation == null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  child: Text(
+                    'Activez la localisation pour voir les pharmacies proches.',
+                    style: const TextStyle(
+                        color: _PharmaColors.textBody, fontSize: 13),
+                  ),
+                ),
+              if (availabilities.isNotEmpty) availabilityBuilder(),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 4),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    onPressed: onOpenMap,
+                    icon: const Icon(Icons.map_rounded, size: 18),
+                    label: const Text('Voir sur la carte',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 14)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _PharmaColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
