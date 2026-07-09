@@ -8,7 +8,28 @@ import 'package:pharma/services/pharmacy_service.dart';
 import 'package:pharma/services/whatsapp_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:pharma/map/custom_map_theme.dart';
 import 'package:pharma/map/in_app_navigation_page.dart';
+import 'package:pharma/widgets/shimmer_widget.dart';
+
+// Palette locale — blue médical
+class _N {
+  static const primary    = Color(0xFF2563EB);
+  static const primarySurf= Color(0xFFEFF6FF);
+  static const accent     = Color(0xFF10B981);  // vert disponibilité
+  static const accentSurf = Color(0xFFD1FAE5);
+  static const warning    = Color(0xFFF59E0B);
+  static const danger     = Color(0xFFEF4444);
+  static const neutral    = Color(0xFF64748B);
+  static const neutralSurf= Color(0xFFF1F5F9);
+  static const surface    = Color(0xFFF8FAFD);
+  static const cardBg     = Color(0xFFFFFFFF);
+  static const textH1     = Color(0xFF0D1B2A);
+  static const textBody   = Color(0xFF4A5568);
+  static const textMuted  = Color(0xFF94A3B8);
+  static const border     = Color(0xFFE2E8F0);
+  static const whatsapp   = Color(0xFF25D366);
+}
 
 class NearbyPharmaciesScreen extends StatefulWidget {
   const NearbyPharmaciesScreen({super.key});
@@ -189,7 +210,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                       medicationName,
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF334155),
+                        color: _N.textBody,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -210,8 +231,8 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                         padding: EdgeInsets.only(top: 10),
                         child: Text(
                           'En attente de reponse automatique...',
-                          style: TextStyle(
-                            color: Color(0xFF64748B),
+                          style: const TextStyle(
+                            color: _N.neutral,
                             fontSize: 12,
                           ),
                         ),
@@ -277,7 +298,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
               Text(
                 interpretation.summary,
                 style: const TextStyle(
-                  color: Color(0xFF059669),
+                  color: _N.accent,
                   fontWeight: FontWeight.w600,
                   fontSize: 12,
                 ),
@@ -315,7 +336,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
               if (v.isNotEmpty) Navigator.of(ctx).pop(v);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF059669),
+              backgroundColor: _N.primary,
             ),
             child: const Text('Continuer'),
           ),
@@ -499,18 +520,18 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Green circle with +
+              // Blue circle with + (croix pharmacie)
               Container(
                 width: 28,
                 height: 28,
                 decoration: const BoxDecoration(
-                  color: Color(0xFF059669),
+                  color: _N.primary,
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Color(0x40000000),
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
+                      color: Color(0x402563EB),
+                      blurRadius: 6,
+                      offset: Offset(0, 3),
                     ),
                   ],
                 ),
@@ -538,7 +559,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                   style: const TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1E293B),
+                    color: _N.textH1,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -561,51 +582,68 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(
-                color: Color(0xFF059669),
-                strokeWidth: 3,
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Recherche des pharmacies...',
-                style: TextStyle(color: Colors.grey[600], fontSize: 15),
-              ),
-            ],
+        backgroundColor: _N.surface,
+        appBar: AppBar(
+          backgroundColor: _N.surface,
+          elevation: 0,
+          title: const Text(
+            'Pharmacies proches',
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 18,
+              color: _N.textH1,
+            ),
           ),
         ),
+        body: const NearbyLoadingSkeleton(),
       );
     }
 
     if (_error != null) {
       return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: _N.surface,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.location_off_rounded,
-                    size: 48, color: Color(0xFFF59E0B)),
-                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: _N.warning.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.location_off_rounded,
+                      size: 48, color: _N.warning),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Localisation indisponible',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: _N.textH1,
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Text(_error!,
                     textAlign: TextAlign.center,
-                    style: const TextStyle(color: Color(0xFF64748B))),
-                const SizedBox(height: 24),
+                    style: const TextStyle(
+                        color: _N.textBody, fontSize: 13, height: 1.5)),
+                const SizedBox(height: 28),
                 ElevatedButton.icon(
                   onPressed: _loadPharmacies,
-                  icon: const Icon(Icons.refresh),
+                  icon: const Icon(Icons.refresh_rounded),
                   label: const Text('Réessayer'),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF059669),
+                    backgroundColor: _N.primary,
                     foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 14),
+                    elevation: 0,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: BorderRadius.circular(14)),
                   ),
                 ),
               ],
@@ -636,11 +674,18 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        urlTemplate: MapStyles.mapboxUrl,
+                        fallbackUrl: MapStyles.osmStandardUrl,
                         userAgentPackageName: 'com.example.pharma',
+                        maxZoom: 19,
                       ),
                       MarkerLayer(markers: _buildMarkers()),
+                      const RichAttributionWidget(
+                        attributions: [
+                          TextSourceAttribution('© Mapbox'),
+                          TextSourceAttribution('© OpenStreetMap'),
+                        ],
+                      ),
                     ],
                   ),
 
@@ -665,15 +710,15 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.location_on,
-                              color: Color(0xFF059669), size: 22),
+                          const Icon(Icons.location_on_rounded,
+                              color: _N.primary, size: 22),
                           const SizedBox(width: 10),
                           Text(
                             'Localisation : $_locationName',
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w500,
-                              color: Color(0xFF1E293B),
+                              color: _N.textH1,
                             ),
                           ),
                         ],
@@ -700,7 +745,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: _N.cardBg,
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         boxShadow: [
           BoxShadow(
@@ -714,26 +759,51 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Title
-          const Padding(
-            padding: EdgeInsets.fromLTRB(20, 18, 20, 0),
-            child: Text(
-              'Pharmacies à proximité',
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1E293B),
+          // Handle drag indicator
+          Center(
+            child: Container(
+              margin: const EdgeInsets.only(top: 12, bottom: 6),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: _N.border,
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
+          // Title
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-            child: Text(
-              'Rayon de 5.0 km',
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[500],
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+            child: Row(children: [
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [_N.primary, Color(0xFF0EA5E9)],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
+              const SizedBox(width: 10),
+              const Text(
+                'Pharmacies à proximité',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  color: _N.textH1,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ]),
+          ),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 4, 20, 12),
+            child: Text(
+              'Rayon de 5 km — triées par distance',
+              style: TextStyle(fontSize: 13, color: _N.textMuted),
             ),
           ),
 
@@ -776,9 +846,9 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
       width: 280,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _N.cardBg,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE8E8E8), width: 1),
+        border: Border.all(color: _N.border, width: 1),
         boxShadow: const [
           BoxShadow(
             color: Color(0x0A000000),
@@ -796,7 +866,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF1E293B),
+              color: _N.textH1,
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -810,7 +880,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF059669),
+                  color: _N.accent,
                   borderRadius: BorderRadius.circular(5),
                 ),
                 child: const Text(
@@ -830,7 +900,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w500,
-                    color: Color(0xFF334155),
+                    color: _N.textBody,
                   ),
                 ),
             ],
@@ -849,10 +919,10 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 9),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: _N.cardBg,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: const Color(0xFFDDDDDD),
+                        color: _N.border,
                         width: 1.2,
                       ),
                     ),
@@ -862,17 +932,15 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                         Icon(Icons.phone,
                             size: 15,
                             color: hasPhone
-                                ? const Color(0xFF334155)
-                                : const Color(0xFFCCCCCC)),
+                                ? _N.textBody
+                                : _N.textMuted),
                         const SizedBox(width: 6),
                         Text(
                           'Appeler',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: hasPhone
-                                ? const Color(0xFF334155)
-                                : const Color(0xFFCCCCCC),
+                            color: hasPhone ? _N.textBody : _N.textMuted,
                           ),
                         ),
                       ],
@@ -890,25 +958,25 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 9),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: _N.primarySurf,
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: const Color(0xFF059669).withOpacity(0.4),
+                        color: _N.primary.withValues(alpha: 0.3),
                         width: 1.2,
                       ),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.navigation,
-                            size: 15, color: const Color(0xFF059669)),
+                        const Icon(Icons.navigation,
+                            size: 15, color: _N.primary),
                         const SizedBox(width: 6),
                         const Text(
                           'Itinéraire',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w500,
-                            color: Color(0xFF059669),
+                            color: _N.primary,
                           ),
                         ),
                       ],
@@ -929,9 +997,7 @@ class _NearbyPharmaciesScreenState extends State<NearbyPharmaciesScreen> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 10),
               decoration: BoxDecoration(
-                color: hasWhatsApp
-                    ? const Color(0xFF25D366)
-                    : const Color(0xFFE0E0E0),
+                color: hasWhatsApp ? _N.whatsapp : _N.neutralSurf,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Row(

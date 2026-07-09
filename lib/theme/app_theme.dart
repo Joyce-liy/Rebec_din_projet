@@ -11,16 +11,16 @@ import 'package:flutter/services.dart';
 // =============================================================================
 
 class AppColors {
-  // Primary Emerald Palette
-  static const Color primary = Color(0xFF059669);
-  static const Color primaryLight = Color(0xFF10B981);
-  static const Color primaryDark = Color(0xFF047857);
-  static const Color primaryDeep = Color(0xFF064E3B);
-  
-  // Secondary Teal Accent
-  static const Color secondary = Color(0xFF0D9488);
-  static const Color secondaryLight = Color(0xFF14B8A6);
-  static const Color secondaryDark = Color(0xFF0F766E);
+  // Primary Medical Blue Palette
+  static const Color primary = Color(0xFF2563EB);       // Bleu médical profond
+  static const Color primaryLight = Color(0xFF3B82F6);  // Bleu moyen
+  static const Color primaryDark = Color(0xFF1D4ED8);   // Bleu intense
+  static const Color primaryDeep = Color(0xFF1E3A8A);   // Bleu nuit
+
+  // Secondary Green — Disponibilité / Vie
+  static const Color secondary = Color(0xFF10B981);     // Émeraude disponibilité
+  static const Color secondaryLight = Color(0xFF34D399);
+  static const Color secondaryDark = Color(0xFF059669);
   
   // Neutral Slate Palette
   static const Color slate50 = Color(0xFFF8FAFC);
@@ -45,8 +45,8 @@ class AppColors {
   static const Color infoLight = Color(0xFFDBEAFE);
   
   // Specialty Colors
-  static const Color pharmacyGreen = Color(0xFF059669);
-  static const Color medicineBlue = Color(0xFF0EA5E9);
+  static const Color pharmacyGreen = Color(0xFF10B981);  // Vert disponibilité
+  static const Color medicineBlue = Color(0xFF0EA5E9);   // Bleu ciel (actions)
   static const Color urgentRed = Color(0xFFDC2626);
   static const Color limitedOrange = Color(0xFFF97316);
   
@@ -56,7 +56,7 @@ class AppColors {
   static const Color outOfStock = Color(0xFFEF4444);
   
   // Background Colors
-  static const Color background = Color(0xFFFAFAFA);
+  static const Color background = Color(0xFFF8FAFD);  // Blanc chaud légèrement bleuté
   static const Color backgroundAlt = Color(0xFFF1F5F9);
   static const Color surface = Colors.white;
   static const Color surfaceElevated = Colors.white;
@@ -75,7 +75,7 @@ class AppColors {
   );
   
   static const LinearGradient heroGradient = LinearGradient(
-    colors: [Color(0xFF059669), Color(0xFF0D9488), Color(0xFF0EA5E9)],
+    colors: [Color(0xFF2563EB), Color(0xFF0EA5E9)],
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );

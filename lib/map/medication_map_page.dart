@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:pharma/models/pharmacy.dart';
 import 'package:pharma/services/location_service.dart';
 import 'package:pharma/utils/geo_utils.dart';
+import 'package:pharma/map/custom_map_theme.dart';
 import 'package:pharma/map/in_app_navigation_page.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -30,10 +31,6 @@ class _MedicationMapPageState extends State<MedicationMapPage>
   static const double _radiusMeters = 5000;
   static const int _pharmacyLimit = 5;
 
-  static const String _cartoVoyagerUrl =
-      'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png';
-  static const List<String> _cartoSubdomains = ['a', 'b', 'c', 'd'];
-
   final LocationService _locationService = LocationService();
   final MapController _mapController = MapController();
 
@@ -43,6 +40,14 @@ class _MedicationMapPageState extends State<MedicationMapPage>
   int? _selectedPharmacyIndex;
   StreamSubscription<dynamic>? _positionSubscription;
   late AnimationController _pulseController;
+
+  // ── Bascule vue satellite ────────────────────
+  // false = carte classique (rues/quartiers) — true = satellite (bâtiments/maisons)
+  bool _satelliteView = false;
+
+  void _toggleSatelliteView() {
+    setState(() => _satelliteView = !_satelliteView);
+  }
 
   @override
   void initState() {
@@ -218,6 +223,13 @@ class _MedicationMapPageState extends State<MedicationMapPage>
       return '${(distance / 1000).toStringAsFixed(1)} km';
     }
     return '${distance.toStringAsFixed(0)} m';
+  }
+
+  Future<void> _openAttributionLink(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   List<Marker> _buildMarkers(List<MedicationAvailability> availabilities) {
@@ -476,6 +488,15 @@ class _MedicationMapPageState extends State<MedicationMapPage>
         _availabilitiesWithinRadius();
     final LatLng mapCenter = _preferredCenter() ?? _defaultCenter();
 
+    // Style Mapbox Streets (par défaut) ou Satellite Streets (bâtiments/
+    // maisons visibles) selon le bouton de bascule. Fallback propre si le
+    // token Mapbox n'est pas configuré, pour ne jamais afficher une carte vide.
+    final String mapboxTileUrl = MapStyles.isMapboxConfigured
+        ? MapStyles.mapboxUrlFor(
+            _satelliteView ? MapStyleVariant.satelliteStreets : MapStyles.defaultVariant,
+          )
+        : MapStyles.recommendedFallbackUrl;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -530,8 +551,9 @@ class _MedicationMapPageState extends State<MedicationMapPage>
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate: _cartoVoyagerUrl,
-                      subdomains: _cartoSubdomains,
+                      urlTemplate: mapboxTileUrl,
+                      fallbackUrl: MapStyles.recommendedFallbackUrl,
+                      subdomains: MapStyles.cartoSubdomains,
                       userAgentPackageName: 'com.example.pharma',
                       maxZoom: 19,
                       tileProvider: NetworkTileProvider(),
@@ -553,6 +575,20 @@ class _MedicationMapPageState extends State<MedicationMapPage>
                         ],
                       ),
                     MarkerLayer(markers: _buildMarkers(availabilities)),
+                    RichAttributionWidget(
+                      attributions: [
+                        TextSourceAttribution(
+                          'Mapbox',
+                          onTap: () => _openAttributionLink(
+                              MapStyles.attributionUrls[0]),
+                        ),
+                        TextSourceAttribution(
+                          'OpenStreetMap',
+                          onTap: () => _openAttributionLink(
+                              MapStyles.attributionUrls[1]),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
                 Positioned(
@@ -582,6 +618,14 @@ class _MedicationMapPageState extends State<MedicationMapPage>
                             );
                           }
                         },
+                      ),
+                      const SizedBox(height: 8),
+                      _buildMapControl(
+                        icon: _satelliteView
+                            ? Icons.map_rounded
+                            : Icons.satellite_alt_rounded,
+                        onTap: _toggleSatelliteView,
+                        accent: _satelliteView,
                       ),
                       const SizedBox(height: 8),
                       _buildMapControl(

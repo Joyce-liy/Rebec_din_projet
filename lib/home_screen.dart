@@ -14,23 +14,23 @@ import 'package:pharma/nearby_pharmacies_screen.dart';
 import 'package:pharma/theme/app_theme.dart';
 
 class _P {
-  static const primary       = Color(0xFF0A6E6E);
-  static const primaryLight  = Color(0xFF0D8C8C);
-  static const primarySurf   = Color(0xFFE6F4F4);
-  static const accent        = Color(0xFF00BFA6);
-  static const accentSurf    = Color(0xFFE0FAF7);
-  static const warning       = Color(0xFFF4A621);
-  static const warningSurf   = Color(0xFFFFF4E0);
-  static const danger        = Color(0xFFF25C54);
-  static const dangerSurf    = Color(0xFFFFEDEC);
+  static const primary       = Color(0xFF2563EB);  // Bleu médical profond
+  static const primaryLight  = Color(0xFF3B82F6);  // Bleu moyen
+  static const primarySurf   = Color(0xFFEFF6FF);  // Bleu très clair
+  static const accent        = Color(0xFF10B981);  // Vert émeraude — disponibilité
+  static const accentSurf    = Color(0xFFD1FAE5);  // Vert très clair
+  static const warning       = Color(0xFFF59E0B);  // Ambre
+  static const warningSurf   = Color(0xFFFEF3C7);
+  static const danger        = Color(0xFFEF4444);  // Corail
+  static const dangerSurf    = Color(0xFFFEE2E2);
   static const neutral       = Color(0xFF64748B);
-  static const neutralSurf   = Color(0xFFF1F5F5);
-  static const surface       = Color(0xFFF7FAFA);
+  static const neutralSurf   = Color(0xFFF1F5F9);
+  static const surface       = Color(0xFFF8FAFD);  // Blanc chaud
   static const cardBg        = Color(0xFFFFFFFF);
-  static const textH1        = Color(0xFF0D1F2D);
-  static const textBody      = Color(0xFF4A6572);
-  static const textMuted     = Color(0xFF8FA3AE);
-  static const border        = Color(0xFFDDE6E6);
+  static const textH1        = Color(0xFF0D1B2A);  // Bleu nuit profond
+  static const textBody      = Color(0xFF4A5568);  // Ardoise chaud
+  static const textMuted     = Color(0xFF94A3B8);
+  static const border        = Color(0xFFE2E8F0);  // Gris perle chaud
 }
 
 class HomeScreen extends StatefulWidget {
@@ -58,7 +58,22 @@ class _HomeScreenState extends State<HomeScreen>
     }
 
     final pages = [
-      HomeBody(userName: widget.userName),
+      HomeBody(
+        userName: widget.userName,
+        onSearchTap: () => setState(() => _currentIndex = 1),
+        onScanTap: () async {
+          final result = await Navigator.push<List<String>>(
+            context,
+            MaterialPageRoute(builder: (_) => const ScannerPage()),
+          );
+          if (result != null && result.isNotEmpty) {
+            setState(() {
+              _cadnetMedications = List<String>.from(result);
+              _currentIndex = 1;
+            });
+          }
+        },
+      ),
       SearchScreen(
         onSearchFocusChanged: (bool isFocused) {},
         scannedMedications: _cadnetMedications,
@@ -230,38 +245,76 @@ class _NavItem extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────
-// FAB IA
+// FAB IA — avec pulsation douce (scale 1.0 → 1.08, 1800ms)
 // ─────────────────────────────────────────────────────────────
-class _AiFab extends StatelessWidget {
+class _AiFab extends StatefulWidget {
   final VoidCallback onTap;
   const _AiFab({required this.onTap});
 
   @override
+  State<_AiFab> createState() => _AiFabState();
+}
+
+class _AiFabState extends State<_AiFab> with SingleTickerProviderStateMixin {
+  late final AnimationController _pulseCtrl;
+  late final Animation<double> _pulseAnim;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1800),
+    )..repeat(reverse: true);
+    _pulseAnim = Tween<double>(begin: 1.0, end: 1.08).animate(
+      CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _pulseCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 56,
-        height: 56,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [_P.primary, _P.accent],
-          ),
-          shape: BoxShape.circle,
-          boxShadow: [
-            BoxShadow(
-              color: _P.primary.withOpacity(0.4),
-              blurRadius: 16,
-              offset: const Offset(0, 6),
-            ),
-          ],
+      onTap: widget.onTap,
+      child: AnimatedBuilder(
+        animation: _pulseAnim,
+        builder: (_, child) => Transform.scale(
+          scale: _pulseAnim.value,
+          child: child,
         ),
-        child: const Icon(
-          Icons.auto_awesome_rounded,
-          color: Colors.white,
-          size: 26,
+        child: Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [_P.primary, _P.accent],
+            ),
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: _P.primary.withValues(alpha: 0.45),
+                blurRadius: 18,
+                offset: const Offset(0, 6),
+              ),
+              BoxShadow(
+                color: _P.accent.withValues(alpha: 0.2),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: const Icon(
+            Icons.auto_awesome_rounded,
+            color: Colors.white,
+            size: 26,
+          ),
         ),
       ),
     );
@@ -273,7 +326,14 @@ class _AiFab extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────
 class HomeBody extends StatefulWidget {
   final String userName;
-  const HomeBody({super.key, required this.userName});
+  final VoidCallback? onSearchTap;
+  final VoidCallback? onScanTap;
+  const HomeBody({
+    super.key,
+    required this.userName,
+    this.onSearchTap,
+    this.onScanTap,
+  });
 
   @override
   State<HomeBody> createState() => _HomeBodyState();
@@ -549,13 +609,13 @@ class _HomeBodyState extends State<HomeBody> {
                           _HeroBadge(
                             icon: Icons.search_rounded,
                             label: 'Rechercher',
-                            onTap: () {},
+                            onTap: widget.onSearchTap ?? () {},
                           ),
                           const SizedBox(width: 10),
                           _HeroBadge(
                             icon: Icons.document_scanner_rounded,
                             label: 'Scanner',
-                            onTap: () {},
+                            onTap: widget.onScanTap ?? () {},
                           ),
                         ]),
                       ],

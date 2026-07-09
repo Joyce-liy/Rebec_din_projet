@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:pharma/profil.dart';
+import 'package:pharma/widgets/shimmer_widget.dart';
 import 'package:pharma/map/medication_map_page.dart';
 import 'package:pharma/map/in_app_navigation_page.dart';
 import 'package:pharma/models/pharmacy.dart';
@@ -13,39 +14,38 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:pharma/services/history_service.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'dart:async';
-import 'package:permission_handler/permission_handler.dart';
 
 // ─────────────────────────────────────────────────────────────
-// DESIGN TOKENS — palette "pharma Pro"
-// Primary   : Teal profond   #0A6E6E  (confiance médicale)
-// Accent    : Émeraude vif   #00BFA6  (disponibilité / vie)
-// Warning   : Ambre doré     #F4A621
-// Danger    : Corail         #F25C54
-// Surface   : Blanc cassé    #F7FAFA
-// Card bg   : Blanc pur      #FFFFFF
-// Text h1   : Ardoise foncé  #0D1F2D
-// Text body : Gris ardoise   #4A6572
-// Border    : Gris perle     #DDE6E6
+// DESIGN TOKENS — palette blue médical + vert disponibilité
+// Primary   : Bleu médical profond  #2563EB
+// Accent    : Vert émeraude         #10B981 (disponibilité)
+// Warning   : Ambre                 #F59E0B (stock limité)
+// Danger    : Corail                #EF4444 (rupture)
+// Surface   : Blanc chaud           #F8FAFD
+// Card bg   : Blanc pur             #FFFFFF
+// Text h1   : Bleu nuit             #0D1B2A
+// Text body : Ardoise chaud         #4A5568
+// Border    : Gris perle chaud      #E2E8F0
 // ─────────────────────────────────────────────────────────────
 
 class _PharmaColors {
-  static const primary = Color(0xFF0A6E6E);
-  static const primaryLight = Color(0xFF0D8C8C);
-  static const primarySurface = Color(0xFFE6F4F4);
-  static const accent = Color(0xFF00BFA6);
-  static const accentSurface = Color(0xFFE0FAF7);
-  static const warning = Color(0xFFF4A621);
-  static const warningSurface = Color(0xFFFFF4E0);
-  static const danger = Color(0xFFF25C54);
-  static const dangerSurface = Color(0xFFFFEDEC);
+  static const primary = Color(0xFF2563EB);        // Bleu médical profond
+  static const primaryLight = Color(0xFF3B82F6);   // Bleu moyen
+  static const primarySurface = Color(0xFFEFF6FF); // Bleu très clair
+  static const accent = Color(0xFF10B981);         // Vert émeraude disponibilité
+  static const accentSurface = Color(0xFFD1FAE5);  // Vert très clair
+  static const warning = Color(0xFFF59E0B);        // Ambre — stock limité
+  static const warningSurface = Color(0xFFFEF3C7);
+  static const danger = Color(0xFFEF4444);         // Corail — rupture
+  static const dangerSurface = Color(0xFFFEE2E2);
   static const neutral = Color(0xFF64748B);
-  static const neutralSurface = Color(0xFFF1F5F5);
-  static const surface = Color(0xFFF7FAFA);
+  static const neutralSurface = Color(0xFFF1F5F9);
+  static const surface = Color(0xFFF8FAFD);        // Blanc chaud
   static const cardBg = Color(0xFFFFFFFF);
-  static const textH1 = Color(0xFF0D1F2D);
-  static const textBody = Color(0xFF4A6572);
-  static const textMuted = Color(0xFF8FA3AE);
-  static const border = Color(0xFFDDE6E6);
+  static const textH1 = Color(0xFF0D1B2A);         // Bleu nuit profond
+  static const textBody = Color(0xFF4A5568);       // Ardoise chaud
+  static const textMuted = Color(0xFF94A3B8);
+  static const border = Color(0xFFE2E8F0);         // Gris perle chaud
   static const whatsapp = Color(0xFF25D366);
 }
 
@@ -500,7 +500,7 @@ class _SearchScreenState extends State<SearchScreen>
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _PharmaColors.whatsapp.withOpacity(0.1),
+                    color: _PharmaColors.whatsapp.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: FaIcon(FontAwesomeIcons.whatsapp,
@@ -613,7 +613,7 @@ class _SearchScreenState extends State<SearchScreen>
         icon: Icons.location_searching,
         iconColor: _PharmaColors.primary,
         bgColor: _PharmaColors.primarySurface,
-        borderColor: _PharmaColors.primary.withOpacity(0.2),
+        borderColor: _PharmaColors.primary.withValues(alpha: 0.2),
         label: 'Localisation en cours…',
         labelColor: _PharmaColors.primary,
         trailing: const SizedBox(
@@ -629,7 +629,7 @@ class _SearchScreenState extends State<SearchScreen>
         icon: Icons.my_location_rounded,
         iconColor: _PharmaColors.accent,
         bgColor: _PharmaColors.accentSurface,
-        borderColor: _PharmaColors.accent.withOpacity(0.25),
+        borderColor: _PharmaColors.accent.withValues(alpha: 0.25),
         label: 'Localisation activée — recherche de proximité',
         labelColor: _PharmaColors.primary,
         trailing: GestureDetector(
@@ -637,7 +637,7 @@ class _SearchScreenState extends State<SearchScreen>
           child: Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: _PharmaColors.accent.withOpacity(0.15),
+              color: _PharmaColors.accent.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.refresh_rounded,
@@ -650,7 +650,7 @@ class _SearchScreenState extends State<SearchScreen>
       icon: Icons.location_off_rounded,
       iconColor: _PharmaColors.warning,
       bgColor: _PharmaColors.warningSurface,
-      borderColor: _PharmaColors.warning.withOpacity(0.25),
+      borderColor: _PharmaColors.warning.withValues(alpha: 0.25),
       label: _locationUnavailable
           ? 'Localisation indisponible'
           : 'Activez votre localisation',
@@ -762,7 +762,7 @@ class _SearchScreenState extends State<SearchScreen>
               border: Border.all(color: _PharmaColors.border, width: 1),
               boxShadow: [
                 BoxShadow(
-                  color: _PharmaColors.primary.withOpacity(0.06),
+                  color: _PharmaColors.primary.withValues(alpha: 0.06),
                   blurRadius: 20,
                   offset: const Offset(0, 6),
                 ),
@@ -775,7 +775,7 @@ class _SearchScreenState extends State<SearchScreen>
                   height: 4,
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [statusColor, statusColor.withOpacity(0.4)],
+                      colors: [statusColor, statusColor.withValues(alpha: 0.4)],
                     ),
                     borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(20)),
@@ -1204,7 +1204,7 @@ class _SearchScreenState extends State<SearchScreen>
                 color: _PharmaColors.primarySurface,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
-                    color: _PharmaColors.primary.withOpacity(0.2)),
+                    color: _PharmaColors.primary.withValues(alpha: 0.2)),
               ),
               child: const Icon(Icons.refresh_rounded,
                   color: _PharmaColors.primary, size: 20),
@@ -1221,26 +1221,7 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   Widget _buildLoadingState() {
-    return Center(
-      child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: _PharmaColors.primarySurface,
-                shape: BoxShape.circle,
-              ),
-              child: const CircularProgressIndicator(
-                  color: _PharmaColors.primary, strokeWidth: 3),
-            ),
-            const SizedBox(height: 16),
-            const Text('Chargement du catalogue…',
-                style: TextStyle(
-                    color: _PharmaColors.textBody,
-                    fontWeight: FontWeight.w500)),
-          ]),
-    );
+    return const SearchLoadingSkeleton();
   }
 
   Widget _buildBody() {
@@ -1271,19 +1252,41 @@ class _SearchScreenState extends State<SearchScreen>
           _buildSectionTitle(),
           const SizedBox(height: 16),
 
-          // ── Content
-          _isSearching
-              ? _buildSearchResults()
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHistoryList(),
-                    const SizedBox(height: 28),
-                    _buildSubSectionTitle('Médicaments disponibles'),
-                    const SizedBox(height: 14),
-                    _buildSearchResults(),
-                  ],
-                ),
+          // ── Content avec transition fluide entre états
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0, 0.04),
+                  end: Offset.zero,
+                ).animate(CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutCubic,
+                )),
+                child: child,
+              ),
+            ),
+            child: _isSearching
+                ? KeyedSubtree(
+                    key: const ValueKey('results'),
+                    child: _buildSearchResults(),
+                  )
+                : KeyedSubtree(
+                    key: const ValueKey('history'),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHistoryList(),
+                        const SizedBox(height: 28),
+                        _buildSubSectionTitle('Médicaments disponibles'),
+                        const SizedBox(height: 14),
+                        _buildSearchResults(),
+                      ],
+                    ),
+                  ),
+          ),
 
           const SizedBox(height: 48),
         ]),
@@ -1332,14 +1335,14 @@ class _SearchScreenState extends State<SearchScreen>
             boxShadow: _searchFocused
                 ? [
                     BoxShadow(
-                      color: _PharmaColors.primary.withOpacity(0.12),
+                      color: _PharmaColors.primary.withValues(alpha: 0.12),
                       blurRadius: 16,
                       offset: const Offset(0, 4),
                     ),
                   ]
                 : [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.04),
+                      color: Colors.black.withValues(alpha: 0.04),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -1433,7 +1436,7 @@ class _SearchScreenState extends State<SearchScreen>
           boxShadow: [
             BoxShadow(
               color: (isActive ? _PharmaColors.danger : _PharmaColors.primary)
-                  .withOpacity(0.35),
+                  .withValues(alpha: 0.35),
               blurRadius: 14,
               offset: const Offset(0, 5),
             ),
@@ -1471,10 +1474,10 @@ class _SearchScreenState extends State<SearchScreen>
           color: _PharmaColors.cardBg,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-              color: _PharmaColors.primary.withOpacity(0.3), width: 1.5),
+              color: _PharmaColors.primary.withValues(alpha: 0.3), width: 1.5),
           boxShadow: [
             BoxShadow(
-              color: _PharmaColors.primary.withOpacity(0.08),
+              color: _PharmaColors.primary.withValues(alpha: 0.08),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -1642,7 +1645,7 @@ class _DistancePill extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: _PharmaColors.primary.withOpacity(0.25),
+            color: _PharmaColors.primary.withValues(alpha: 0.25),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1719,13 +1722,13 @@ class _WhatsAppButton extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
               color: active
-                  ? _PharmaColors.whatsapp.withOpacity(0.3)
+                  ? _PharmaColors.whatsapp.withValues(alpha: 0.3)
                   : _PharmaColors.border,
               width: 1),
           boxShadow: active
               ? [
                   BoxShadow(
-                    color: _PharmaColors.whatsapp.withOpacity(0.3),
+                    color: _PharmaColors.whatsapp.withValues(alpha: 0.3),
                     blurRadius: 10,
                     offset: const Offset(0, 3),
                   ),
@@ -1770,7 +1773,7 @@ class _MedExpansionCard extends StatelessWidget {
         border: Border.all(color: _PharmaColors.border, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 12,
             offset: const Offset(0, 3),
           ),
@@ -1792,7 +1795,7 @@ class _MedExpansionCard extends StatelessWidget {
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [statusColor, statusColor.withOpacity(0.3)],
+                  colors: [statusColor, statusColor.withValues(alpha: 0.3)],
                 ),
                 borderRadius: BorderRadius.circular(3),
               ),
@@ -1851,7 +1854,7 @@ class _MedExpansionCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                           color:
-                              _PharmaColors.warning.withOpacity(0.3)),
+                              _PharmaColors.warning.withValues(alpha: 0.3)),
                     ),
                     child: Row(children: [
                       const Icon(Icons.info_outline_rounded,

@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'package:pharma/map/custom_map_theme.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // ─────────────────────────────────────────────
 // Data model for one OSRM turn-by-turn step
@@ -126,6 +127,14 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
   String get _pharmacyName {
     final n = widget.pharmacyName?.trim();
     return (n == null || n.isEmpty) ? 'Pharmacie' : n;
+  }
+
+  // ── Bascule vue satellite ────────────────────
+  // false = carte classique (rues/quartiers) — true = satellite (bâtiments/maisons)
+  bool _satelliteView = false;
+
+  void _toggleSatelliteView() {
+    setState(() => _satelliteView = !_satelliteView);
   }
 
   // ─────────────────────────────────────────────
@@ -501,6 +510,13 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
     _mapController.move(_mapController.camera.center, z);
   }
 
+  Future<void> _openAttributionLink(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   // ─────────────────────────────────────────────
   // Geometry utilities
   // ─────────────────────────────────────────────
@@ -593,6 +609,15 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
   // ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // Style Mapbox Streets (par défaut) ou Satellite Streets (bâtiments/
+    // maisons visibles) selon le bouton de bascule. Fallback propre si le
+    // token Mapbox n'est pas configuré, pour ne jamais afficher une carte vide.
+    final String mapboxTileUrl = MapStyles.isMapboxConfigured
+        ? MapStyles.mapboxUrlFor(
+            _satelliteView ? MapStyleVariant.satelliteStreets : MapStyles.defaultVariant,
+          )
+        : MapStyles.recommendedFallbackUrl;
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: Stack(
@@ -621,8 +646,8 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
             ),
             children: [
               TileLayer(
-                urlTemplate: MapStyles.cartoVoyagerUrl,
-                fallbackUrl: MapStyles.osmStandardUrl,
+                urlTemplate: mapboxTileUrl,
+                fallbackUrl: MapStyles.recommendedFallbackUrl,
                 subdomains: MapStyles.cartoSubdomains,
                 userAgentPackageName: 'com.example.pharma',
                 maxZoom: 19,
@@ -666,6 +691,18 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
                 ],
               ),
               MarkerLayer(markers: _buildMarkers()),
+              RichAttributionWidget(
+                attributions: [
+                  TextSourceAttribution(
+                    'Mapbox',
+                    onTap: () => _openAttributionLink(MapStyles.attributionUrls[0]),
+                  ),
+                  TextSourceAttribution(
+                    'OpenStreetMap',
+                    onTap: () => _openAttributionLink(MapStyles.attributionUrls[1]),
+                  ),
+                ],
+              ),
             ],
           ),
 
@@ -1168,6 +1205,14 @@ class _InAppNavigationPageState extends State<InAppNavigationPage>
               }
             },
             fgColor: _followUser ? _accent : const Color(0xFF475569),
+          ),
+          const SizedBox(height: 8),
+          _ControlBtn(
+            icon: _satelliteView
+                ? Icons.map_rounded
+                : Icons.satellite_alt_rounded,
+            onTap: _toggleSatelliteView,
+            fgColor: _satelliteView ? _accent : const Color(0xFF475569),
           ),
           const SizedBox(height: 8),
           _ControlBtn(
