@@ -1,6 +1,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pharm_admin/l10n/app_localizations.dart';
 import '../theme.dart';
 
 class GestionStockScreen extends StatefulWidget {
@@ -307,8 +308,9 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Gestion du Stock',
+        title: Text(
+  context.t('gestion_stock'),   // ← C’est ça le changement principal
+          
           style: TextStyle(
             color: Color(0xFF0F172A),
             fontWeight: FontWeight.w800,
@@ -662,8 +664,9 @@ class _GestionStockScreenState extends State<GestionStockScreen> {
             backgroundColor: PharmaTheme.emeraldGreen,
             onPressed: () => _showMedDialog(context, currentList),
             icon: const Icon(Icons.add, color: Colors.white),
-            label: const Text(
-              'Ajouter',
+            label: Text(
+  context.t('ajouter'),   // ← C’est ça le changement principal
+              
               style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.w700,

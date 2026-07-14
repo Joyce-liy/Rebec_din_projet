@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pharm_admin/l10n/app_localizations.dart';
 import '../services/firestore_service.dart';
 import '../theme.dart';
 
@@ -40,8 +41,9 @@ class _ClaimPharmacyScreenState extends State<ClaimPharmacyScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text(
-          'Confirmer la réclamation',
+        title: Text(
+  context.t('confirm_claim'),   // ← C’est ça le changement principal
+         
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         content: Text(
@@ -51,15 +53,17 @@ class _ClaimPharmacyScreenState extends State<ClaimPharmacyScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Annuler'),
+            child: Text(
+  context.t('annuler')),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: PharmaTheme.emeraldGreen,
             ),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text(
-              'Réclamer',
+            child: Text(
+  context.t('claim'),   // ← C’est ça le changement principal
+            
               style: TextStyle(color: Colors.white),
             ),
           ),
@@ -103,8 +107,9 @@ class _ClaimPharmacyScreenState extends State<ClaimPharmacyScreen> {
           icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Récupérer mes anciennes pharmacies',
+        title: Text(
+  context.t('recover_pharmacies'),   // ← C’est ça le changement principal
+         
           style: TextStyle(
             color: Color(0xFF0F172A),
             fontWeight: FontWeight.bold,
@@ -137,8 +142,9 @@ class _ClaimPharmacyScreenState extends State<ClaimPharmacyScreen> {
           Icon(Icons.check_circle_outline_rounded,
               size: 72, color: PharmaTheme.emeraldGreen.withOpacity(0.5)),
           const SizedBox(height: 16),
-          const Text(
-            'Aucune pharmacie en attente',
+          Text(
+  context.t('no_orphan_pharmacies'),   // ← C’est ça le changement principal
+           
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -146,8 +152,9 @@ class _ClaimPharmacyScreenState extends State<ClaimPharmacyScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Toutes les pharmacies ont déjà un propriétaire.',
+         Text(
+  context.t('all_pharmacies_have_owner'),   // ← C’est ça le changement principal
+           
             style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
           ),
         ],
@@ -270,8 +277,9 @@ class _ClaimPharmacyScreenState extends State<ClaimPharmacyScreen> {
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 8),
                             ),
-                            child: const Text(
-                              'Réclamer',
+                            child: Text(
+  context.t('claim'),   // ← C’est ça le changement principal
+                              
                               style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 fontSize: 12,

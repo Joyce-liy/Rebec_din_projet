@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:pharm_admin/l10n/app_localizations.dart';
 import '../models/pharmacy.dart';
 import '../theme.dart';
 
@@ -33,8 +34,8 @@ class MyPharmaciesScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Supprimer la pharmacie ?',
+              Text(
+                context.t('delete_pharmacy'),
                 style: TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 17,
@@ -44,7 +45,7 @@ class MyPharmaciesScreen extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                'Voulez-vous vraiment supprimer\n"${pharmacy.name}" ?\n\nCette action est irréversible.',
+                '${context.t('confirm_delete_pharmacy')} "${pharmacy.name}" ?\n\n${context.t('irreversible_action')}',
                 style: const TextStyle(
                   fontSize: 13,
                   color: Color(0xFF64748B),
@@ -65,9 +66,9 @@ class MyPharmaciesScreen extends StatelessWidget {
                           color: const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Text(
-                            'Annuler',
+                            context.t('cancel'),
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF475569),
@@ -86,10 +87,7 @@ class MyPharmaciesScreen extends StatelessWidget {
                         height: 46,
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFFEF4444),
-                              Color(0xFFDC2626),
-                            ],
+                            colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
                           ),
                           borderRadius: BorderRadius.circular(14),
                           boxShadow: [
@@ -100,16 +98,19 @@ class MyPharmaciesScreen extends StatelessWidget {
                             ),
                           ],
                         ),
-                        child: const Center(
+                        child: Center(
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.delete_rounded,
-                                  color: Colors.white, size: 16),
-                              SizedBox(width: 6),
+                              const Icon(
+                                Icons.delete_rounded,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                              const SizedBox(width: 6),
                               Text(
-                                'Supprimer',
-                                style: TextStyle(
+                                context.t('delete'),
+                                style: const TextStyle(
                                   fontWeight: FontWeight.w700,
                                   color: Colors.white,
                                 ),
@@ -141,16 +142,20 @@ class MyPharmaciesScreen extends StatelessWidget {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle_rounded,
-                    color: Colors.white, size: 18),
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
                 const SizedBox(width: 8),
-                Text('"${pharmacy.name}" supprimée avec succès'),
+                Text('"${pharmacy.name}" ${context.t('deleted_successfully')}'),
               ],
             ),
             backgroundColor: const Color(0xFF10B981),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12)),
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
       }
@@ -158,7 +163,7 @@ class MyPharmaciesScreen extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur lors de la suppression : $e'),
+            content: Text('${context.t('delete_error')} $e'),
             backgroundColor: Colors.redAccent,
             behavior: SnackBarBehavior.floating,
           ),
@@ -177,12 +182,12 @@ class MyPharmaciesScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded,
-              color: Color(0xFF0F172A)),
+          icon: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Mes Pharmacies',
+        title: Text(
+          context.t('my_pharmacy'), // ← C’est ça le changement principal
+
           style: TextStyle(
             color: Color(0xFF0F172A),
             fontWeight: FontWeight.bold,
@@ -191,7 +196,7 @@ class MyPharmaciesScreen extends StatelessWidget {
         ),
       ),
       body: uid == null
-          ? const Center(child: Text('Non connecté'))
+          ? Center(child: Text(context.t('not_connected')))
           : StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
                   .collection('pharmacies')
@@ -201,7 +206,8 @@ class MyPharmaciesScreen extends StatelessWidget {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(
                     child: CircularProgressIndicator(
-                        color: PharmaTheme.emeraldGreen),
+                      color: PharmaTheme.emeraldGreen,
+                    ),
                   );
                 }
 
@@ -212,13 +218,17 @@ class MyPharmaciesScreen extends StatelessWidget {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.local_pharmacy_outlined,
-                            size: 72,
-                            color:
-                                PharmaTheme.emeraldGreen.withOpacity(0.3)),
+                        Icon(
+                          Icons.local_pharmacy_outlined,
+                          size: 72,
+                          color: PharmaTheme.emeraldGreen.withOpacity(0.3),
+                        ),
                         const SizedBox(height: 16),
-                        const Text(
-                          'Aucune pharmacie trouvée',
+                        Text(
+                          context.t(
+                            'no_pharmacy_found',
+                          ), // ← C’est ça le changement principal
+
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
@@ -226,10 +236,12 @@ class MyPharmaciesScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Text(
-                          'Créez votre première pharmacie depuis le hub.',
+                        Text(
+                          context.t('create_first_pharmacy'),
                           style: TextStyle(
-                              color: Color(0xFF94A3B8), fontSize: 13),
+                            color: Color(0xFF94A3B8),
+                            fontSize: 13,
+                          ),
                           textAlign: TextAlign.center,
                         ),
                       ],
@@ -245,12 +257,10 @@ class MyPharmaciesScreen extends StatelessWidget {
                     id: doc.id,
                     name: data['nom'] ?? '',
                     address: data['adresse'] ?? '',
-                    latitude: (localisation?['latitude'] as num?)
-                            ?.toDouble() ??
-                        0.0,
-                    longitude: (localisation?['longitude'] as num?)
-                            ?.toDouble() ??
-                        0.0,
+                    latitude:
+                        (localisation?['latitude'] as num?)?.toDouble() ?? 0.0,
+                    longitude:
+                        (localisation?['longitude'] as num?)?.toDouble() ?? 0.0,
                     telephone: data['telephone'] ?? '',
                     whatsapp: data['whatsapp'] ?? '',
                     isActive: data['is_active'] ?? true,
@@ -266,7 +276,9 @@ class MyPharmaciesScreen extends StatelessWidget {
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 6),
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFF10B981).withOpacity(0.1),
                               borderRadius: BorderRadius.circular(20),
@@ -280,7 +292,6 @@ class MyPharmaciesScreen extends StatelessWidget {
                               ),
                             ),
                           ),
-                         
                         ],
                       ),
                     ),
@@ -289,15 +300,13 @@ class MyPharmaciesScreen extends StatelessWidget {
                       child: ListView.separated(
                         padding: const EdgeInsets.all(20),
                         itemCount: pharmacies.length,
-                        separatorBuilder: (_, __) =>
-                            const SizedBox(height: 12),
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, i) {
                           final p = pharmacies[i];
                           return _PharmacyCard(
                             pharmacy: p,
                             onTap: () => Navigator.pop(context, p),
-                            onLongPress: () =>
-                                _confirmDelete(context, p),
+                            onLongPress: () => _confirmDelete(context, p),
                           );
                         },
                       ),
@@ -353,8 +362,11 @@ class _PharmacyCard extends StatelessWidget {
                 ),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: const Icon(Icons.local_pharmacy_rounded,
-                  color: Colors.white, size: 26),
+              child: const Icon(
+                Icons.local_pharmacy_rounded,
+                color: Colors.white,
+                size: 26,
+              ),
             ),
             const SizedBox(width: 14),
 
@@ -376,7 +388,9 @@ class _PharmacyCard extends StatelessWidget {
                     Text(
                       pharmacy.address,
                       style: const TextStyle(
-                          fontSize: 12, color: Color(0xFF94A3B8)),
+                        fontSize: 12,
+                        color: Color(0xFF94A3B8),
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -387,7 +401,9 @@ class _PharmacyCard extends StatelessWidget {
                       // Badge statut
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
+                          horizontal: 8,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: pharmacy.isActive
                               ? const Color(0xFF10B981).withOpacity(0.1)
@@ -409,15 +425,20 @@ class _PharmacyCard extends StatelessWidget {
                       // Hint suppression
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 7, vertical: 3),
+                          horizontal: 7,
+                          vertical: 3,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFEF2F2),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Row(
                           children: [
-                            Icon(Icons.touch_app_rounded,
-                                size: 9, color: Color(0xFFEF4444)),
+                            Icon(
+                              Icons.touch_app_rounded,
+                              size: 9,
+                              color: Color(0xFFEF4444),
+                            ),
                             SizedBox(width: 3),
                             Text(
                               'Appui long',
@@ -437,8 +458,11 @@ class _PharmacyCard extends StatelessWidget {
             ),
 
             // Flèche
-            const Icon(Icons.arrow_forward_ios_rounded,
-                size: 14, color: Color(0xFFCBD5E1)),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 14,
+              color: Color(0xFFCBD5E1),
+            ),
           ],
         ),
       ),

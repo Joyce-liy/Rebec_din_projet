@@ -1,10 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:pharm_admin/screens/admin_dashboard_screen.dart';
 import 'package:pharm_admin/screens/pricing_screen.dart';
 import 'package:pharm_admin/screens/welcome_screen.dart';
 import 'package:pharm_admin/screens/pharmacist_hub_screen.dart';
+import 'package:pharm_admin/l10n/app_language.dart';
+import 'package:pharm_admin/l10n/app_localizations.dart';
 import 'theme.dart';
 import 'screens/register_screen.dart';
 
@@ -17,11 +20,24 @@ void main() async {
 class PharmacyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'PharmaGeo',
-      debugShowCheckedModeBanner: false,
-      theme: PharmaTheme.lightTheme,
-      home: AuthWrapper(), // Point de départ
+    return ValueListenableBuilder<Locale>(
+      valueListenable: AppLanguage.instance,
+      builder: (context, locale, child) {
+        return MaterialApp(
+          title: 'PharmaGeo',
+          debugShowCheckedModeBanner: false,
+          theme: PharmaTheme.lightTheme,
+          locale: locale,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localizationsDelegates: const [
+            AppLocalizations.delegate,
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          home: AuthWrapper(), // Point de départ
+        );
+      },
     );
   }
 }

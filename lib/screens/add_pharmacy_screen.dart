@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:csv/csv.dart';
+import 'package:pharm_admin/l10n/app_localizations.dart';
 import '../theme.dart';
 import '../models/pharmacy.dart';
 import '../services/firestore_service.dart';
@@ -78,7 +79,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
       String extension = file.extension?.toLowerCase() ?? '';
 
       if (extension != 'csv' && extension != 'xlsx') {
-        _showError('Format invalide ! Choisissez un fichier .csv ou .xlsx');
+        _showError(context.t('add_pharmacy_invalid_format'));
         return;
       }
 
@@ -87,14 +88,12 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
       if (extension == 'csv') {
         parsed = _parseCsv(file);
       } else {
-        _showError(
-          'Fichier XLSX détecté. Veuillez convertir en CSV pour ce moment.',
-        );
+        _showError(context.t('add_pharmacy_xlsx_warning'));
         return;
       }
 
       if (parsed.isEmpty) {
-        _showError('Aucun médicament trouvé dans le fichier.');
+        _showError(context.t('add_pharmacy_no_medicines_found'));
         return;
       }
 
@@ -108,14 +107,16 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${parsed.length} médicaments importés !'),
+            content: Text(
+              '${parsed.length} ${context.t('medications_imported')}',
+            ),
             backgroundColor: const Color(0xFF10B981),
             behavior: SnackBarBehavior.floating,
           ),
         );
       }
     } catch (e) {
-      _showError('Erreur lors de la sélection : $e');
+      _showError('${context.t('add_pharmacy_selection_error')} $e');
     }
   }
 
@@ -216,7 +217,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
   Future<void> _confirmRegistration() async {
     if (_nameController.text.trim().isEmpty ||
         _phoneController.text.trim().isEmpty) {
-      _showError('Veuillez remplir les champs obligatoires !');
+      _showError(context.t('add_pharmacy_required_fields'));
       return;
     }
 
@@ -257,15 +258,18 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
                 size: 60,
               ),
               const SizedBox(height: 16),
-              const Text(
-                'Pharmacie enregistrée !',
+              Text(
+                context.t(
+                  'pharmacy_registered',
+                ), // ← C’est ça le changement principal
+
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
               if (_parsedMedications.isNotEmpty)
                 Text(
-                  '${_parsedMedications.length} médicaments importés avec succès.',
+                  '${_parsedMedications.length} ${context.t('add_pharmacy_import_success')}.',
                   style: TextStyle(color: Colors.grey[600]),
                   textAlign: TextAlign.center,
                 ),
@@ -283,13 +287,16 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
                 Navigator.pop(context);
                 Navigator.pop(context);
               },
-              child: const Text('OK', style: TextStyle(color: Colors.white)),
+              child: Text(
+                context.t('ok'),
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           ],
         ),
       );
     } catch (e) {
-      _showError('Erreur lors de l\'enregistrement : $e');
+      _showError('${context.t('add_pharmacy_registration_error')} $e');
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -307,8 +314,11 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
                 Icons.add_location_alt_rounded,
                 color: Colors.white,
               ),
-              label: const Text(
-                'ENREGISTRER ICI',
+              label: Text(
+                context.t(
+                  'confirm_and_register',
+                ), // ← C’est ça le changement principal
+
                 style: TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -405,8 +415,10 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
                           ),
                         ),
                         const SizedBox(width: 12),
-                        const Text(
-                          'Nouvelle Pharmacie',
+                        Text(
+                          context.t(
+                            'new_pharmacy',
+                          ), // ← C’est ça le changement principal
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
@@ -419,26 +431,26 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
 
                     _buildField(
                       _nameController,
-                      "Nom de l'officine",
+                      context.t('name_of_pharmacy'),
                       Icons.local_pharmacy_outlined,
                     ),
                     const SizedBox(height: 12),
                     _buildField(
                       _addressController,
-                      'Adresse physique',
+                      context.t('physical_address'),
                       Icons.location_on_outlined,
                     ),
                     const SizedBox(height: 12),
                     _buildField(
                       _phoneController,
-                      'Numéro de téléphone',
+                      context.t('phone_number'),
                       Icons.phone_outlined,
                       type: TextInputType.phone,
                     ),
                     const SizedBox(height: 12),
                     _buildField(
                       _whatsappController,
-                      'WhatsApp (ex: 2376XXXXXXXX)',
+                      context.t('whatsapp_number'),
                       Icons.chat_bubble_outline_rounded,
                       type: TextInputType.phone,
                     ),
@@ -486,7 +498,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  '${_parsedMedications.length} médicaments prêts à importer',
+                  '${_parsedMedications.length} ${context.t('medications_ready_to_import')}',
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF065F46),
@@ -540,7 +552,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
               child: Text(
-                '... et ${_parsedMedications.length - 5} autres médicaments',
+                '${context.t('and_more_medications')} ${_parsedMedications.length - 5}',
                 style: TextStyle(fontSize: 11, color: Colors.grey[500]),
               ),
             ),
@@ -583,8 +595,11 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Importer les médicaments',
+                  Text(
+                    context.t(
+                      'import_medications',
+                    ), // ← C’est ça le changement principal
+
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -593,8 +608,7 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    _selectedFileName ??
-                        'Sélectionner un fichier .csv ou .xlsx',
+                    _selectedFileName ?? context.t('select_csv_xlsx'),
                     style: TextStyle(
                       color: _selectedFileName != null
                           ? const Color(0xFF059669)
@@ -655,8 +669,9 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
                 onPressed: () => Navigator.pop(context),
               ),
               const SizedBox(width: 4),
-              const Text(
-                'Enregistrer ma Pharmacie',
+              Text(
+                context.t('new_pharmacy'), // ← C’est ça le changement principal
+
                 style: TextStyle(
                   color: Color(0xFF263238),
                   fontSize: 15,
@@ -694,8 +709,11 @@ class _AddPharmacyScreenState extends State<AddPharmacyScreen> {
           children: [
             const Icon(Icons.check_rounded, color: Colors.white),
             const SizedBox(width: 8),
-            const Text(
-              'CONFIRMER ET ENREGISTRER',
+            Text(
+              context.t(
+                'confirm_and_register',
+              ), // ← C’est ça le changement principal
+
               style: TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,

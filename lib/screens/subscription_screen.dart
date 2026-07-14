@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:pharm_admin/l10n/app_localizations.dart';
 import 'dart:ui'; // Pour l'effet de flou si besoin
 import '../theme.dart';
 
@@ -76,8 +77,9 @@ class SubscriptionScreen extends StatelessWidget {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ).createShader(bounds),
-                          child: const Text(
-                            "Choisissez votre\nvisibilité.",
+                          child: Text(
+  context.t("subscription.choose_visibility"),
+                           
                             style: TextStyle(
                               fontSize: 36,
                               fontWeight: FontWeight.w900,
@@ -198,8 +200,9 @@ class SubscriptionScreen extends StatelessWidget {
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 color: color,
-                child: const Text(
-                  "LE PLUS CHOISI",
+                child: Text(
+  context.t("subscription.most_chosen"),
+                 
                   textAlign: TextAlign.center,
                   style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1),
                 ),
@@ -258,7 +261,13 @@ class SubscriptionScreen extends StatelessWidget {
                         elevation: 0,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                       ),
-                      child: const Text("Choisir ce pack", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                      child: Text(
+                        context.t('choose_this_plan'), 
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          fontSize: 15
+                        ),
+                      ),
                     ),
                   ),
                 ],

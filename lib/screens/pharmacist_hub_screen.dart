@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:pharm_admin/screens/help_screen.dart';
 import '../models/pharmacy.dart';
 import '../theme.dart';
+import '../l10n/app_localizations.dart';
 import 'add_pharmacy_screen.dart';
 import 'subscription_screen.dart';
 import 'create_ad_screen.dart';
 import 'settings_screen.dart';
 import 'statistique_screen.dart';
-import 'gestion_stock_screen.dart';
 import 'welcome_screen.dart';
 
 class PharmacistHubScreen extends StatefulWidget {
@@ -21,7 +22,7 @@ class PharmacistHubScreen extends StatefulWidget {
 class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
   User? _currentUser;
   final GoogleSignIn _googleSignIn = GoogleSignIn();
-  Pharmacy? _selectedPharmacy; // pharmacie active choisie depuis StatistiqueScreen
+  Pharmacy? _selectedPharmacy;
 
   @override
   void initState() {
@@ -32,34 +33,34 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
   Future<void> _logout() async {
     await FirebaseAuth.instance.signOut();
     await _googleSignIn.signOut();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => WelcomeScreen()),
-    );
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => WelcomeScreen()),
+      );
+    }
   }
 
   Future<void> _confirmLogout() async {
     final shouldLogout = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('Se déconnecter'),
-          content: Text('Voulez-vous vraiment vous déconnecter ?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text('Non'),
+      builder: (context) => AlertDialog(
+        title: Text(context.t('log_out')),
+        content: Text(context.t('confirm_logout')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(context.t('no')),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: PharmaTheme.emeraldGreen,
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: PharmaTheme.emeraldGreen,
-              ),
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text('Oui'),
-            ),
-          ],
-        );
-      },
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(context.t('yes')),
+          ),
+        ],
+      ),
     );
 
     if (shouldLogout == true) {
@@ -78,18 +79,16 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildHeader(),
-
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 15),
-
                     _buildManagementBanner(context),
-
                     const SizedBox(height: 30),
 
+                    // Grid des actions principales
                     GridView.count(
                       shrinkWrap: true,
                       physics: const NeverScrollableScrollPhysics(),
@@ -100,34 +99,34 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
                       children: [
                         _buildActionCard(
                           context,
-                          "Ma Pharmacie",
-                          "Localisation GPS",
+                          context.t('my_pharmacy'),
+                          context.t('gps_location'),
                           Icons.location_on_rounded,
                           PharmaTheme.emeraldGreen,
-                          AddPharmacyScreen(), //connexion à la page de création des pharmacies
+                          AddPharmacyScreen(),
                         ),
                         _buildActionCard(
                           context,
-                          "Abonnement",
-                          "Gérer mon offre",
+                          context.t('subscription'),
+                          context.t('manage_offer'),
                           Icons.auto_awesome_rounded,
                           Colors.orangeAccent,
-                          SubscriptionScreen(), // connexion à la page d'abonnement
+                          SubscriptionScreen(),
                         ),
                         _buildActionCard(
                           context,
-                          "Publicité",
-                          "Booster les vues",
+                          context.t('advertising'),
+                          context.t('boost_views'),
                           Icons.rocket_launch_rounded,
                           Colors.blueAccent,
-                          CreateAdScreen(), //pour souscrire à une publicité
+                          CreateAdScreen(),
                         ),
                         _buildActionCard(
                           context,
-                          "Gestion",
+                          context.t('management'),
                           _selectedPharmacy != null
                               ? _selectedPharmacy!.name
-                              : "Vues et clics",
+                              : context.t('views_clicks'),
                           Icons.bar_chart_rounded,
                           Colors.purpleAccent,
                           StatistiqueScreen(pharmacy: _selectedPharmacy),
@@ -136,31 +135,37 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
                     ),
 
                     const SizedBox(height: 35),
-                    const Text(
-                      "Assistance & Réglages",
-                      style: TextStyle(
+
+                    // Section Assistance & Réglages (moderne)
+                    Text(
+                      context.t('support_settings'),
+                      style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF2D3436),
+                        letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 16),
 
-                    // --- PAS DE 'const' ICI CAR onTap EST DYNAMIQUE ---
-                    _buildOptionTile(
-                      Icons.help_center_rounded,
-                      "Centre d'aide",
-                      "Besoin d'aide ?",
+                    _buildModernOptionTile(
+                      icon: Icons.help_center_rounded,
+                      title: context.t('help_center'),
+                      subtitle: context.t('need_help'),
                       onTap: () {
-                        // Action Aide
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const HelpScreen()),
+                        );
                       },
                     ),
-                    _buildOptionTile(
-                      Icons.settings_rounded,
-                      "Paramètres",
-                      "Configuration",
+                    const SizedBox(height: 8),
+
+                    _buildModernOptionTile(
+                      icon: Icons.settings_rounded,
+                      title: context.t('settings'),
+                      subtitle: context.t('configuration'),
                       onTap: () {
-                        // NAVIGATION VERS SETTINGS
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -176,6 +181,61 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  // ==================== WIDGETS MODERNES ====================
+
+  Widget _buildModernOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    VoidCallback? onTap,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: ListTile(
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 12,
+        ),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: PharmaTheme.emeraldGreen.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(icon, color: PharmaTheme.emeraldGreen, size: 26),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: 15,
+            color: Color(0xFF2D3436),
+          ),
+        ),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+        ),
+        trailing: const Icon(
+          Icons.chevron_right_rounded,
+          color: Colors.grey,
+          size: 24,
         ),
       ),
     );
@@ -206,9 +266,9 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "Gestion de l'officine",
-                  style: TextStyle(
+                Text(
+                  context.t('pharmacy_management'),
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -232,7 +292,7 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
-                      "Créer une pharmacie",
+                      context.t('create_pharmacy'),
                       style: TextStyle(
                         color: PharmaTheme.emeraldGreen,
                         fontWeight: FontWeight.w800,
@@ -251,7 +311,7 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
   }
 
   Widget _buildHeader() {
-    String userName = _currentUser?.displayName ?? "Utilisateur";
+    String userName = _currentUser?.displayName ?? context.t('user');
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 10),
       child: Row(
@@ -265,12 +325,11 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
           Expanded(
             child: Text(
               userName,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
                 color: Color(0xFF2D3436),
               ),
-              softWrap: true,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
@@ -280,17 +339,19 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                icon: Icon(
+                icon: const Icon(
                   Icons.notifications_none_rounded,
                   size: 26,
                   color: Color(0xFF2D3436),
                 ),
-                onPressed: () {
-                  // Action pour les notifications
-                },
+                onPressed: () {},
               ),
               IconButton(
-                icon: Icon(Icons.logout, size: 26, color: Color(0xFF2D3436)),
+                icon: const Icon(
+                  Icons.logout,
+                  size: 26,
+                  color: Color(0xFF2D3436),
+                ),
                 onPressed: _confirmLogout,
               ),
             ],
@@ -311,11 +372,10 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
     return GestureDetector(
       onTap: () async {
         if (target != null) {
-          final result = await Navigator.push<Pharmacy>(
+          final result = await Navigator.push<Pharmacy?>(
             context,
             MaterialPageRoute(builder: (context) => target),
           );
-          // Si StatistiqueScreen retourne une pharmacie sélectionnée, on met à jour le hub
           if (result != null && mounted) {
             setState(() => _selectedPharmacy = result);
           }
@@ -348,31 +408,6 @@ class _PharmacistHubScreenState extends State<PharmacistHubScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildOptionTile(
-    IconData icon,
-    String title,
-    String subtitle, {
-    VoidCallback? onTap,
-  }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: ListTile(
-        onTap: onTap,
-        leading: Icon(icon, color: Colors.blueGrey, size: 22),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        ),
-        subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
-        trailing: const Icon(Icons.chevron_right_rounded, size: 18),
       ),
     );
   }

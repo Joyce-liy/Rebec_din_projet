@@ -14,6 +14,7 @@
         "firebase_auth",
         "firebase_core",
         "flutter",
+        "flutter_localizations",
         "geolocator",
         "google_maps_flutter",
         "google_sign_in",
@@ -47,6 +48,15 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "flutter_localizations",
+      "version": "0.0.0",
+      "dependencies": [
+        "flutter",
+        "intl",
+        "path"
       ]
     },
     {
@@ -253,6 +263,15 @@
         "stream_channel",
         "string_scanner",
         "term_glyph"
+      ]
+    },
+    {
+      "name": "intl",
+      "version": "0.20.2",
+      "dependencies": [
+        "clock",
+        "meta",
+        "path"
       ]
     },
     {
