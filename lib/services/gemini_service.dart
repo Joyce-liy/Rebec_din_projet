@@ -22,7 +22,8 @@ class GeminiService {
   // =========================================================
 
   static Future<List<String>> readHandwrittenPrescription(
-      Uint8List imageBytes) async {
+    Uint8List imageBytes,
+  ) async {
     return _instance._readHandwrittenPrescriptionImpl(imageBytes);
   }
 
@@ -86,7 +87,8 @@ Réponds UNIQUEMENT avec le mot catégorie, sans rien d'autre.""",
 
     try {
       final response = await _callGemini(
-        systemPrompt: """Tu es REBEC-DIN, pharmacien expert à Yaoundé, Cameroun, avec 15 ans d'expérience clinique.
+        systemPrompt:
+            """Tu es REBEC-DIN, pharmacien expert à Yaoundé, Cameroun, avec 15 ans d'expérience clinique.
 Un patient vient te voir en décrivant des symptômes. Voici comment tu dois répondre :
 
 ÉTAPE 1 — EMPATHIE (1 phrase) :
@@ -100,6 +102,13 @@ Reconnais sincèrement l'état du patient. Exemple : "Je suis désolé de vous v
 ÉTAPE 3 — CONSEILS IMMÉDIATS SÛRS :
 - Hydratation abondante
 - Repos
+- Pour les petits maux courants, propose 1 ou 2 options de medicaments sans ordonnance comme un pharmacien le ferait, sans personnaliser la dose :
+  mal de tete/douleur : paracetamol en premiere intention, eviter l'ibuprofene/aspirine si ulcere, anticoagulants, grossesse, allergie ou doute.
+  rhume/nez bouche : lavage au serum physiologique, spray nasal adapte sur courte duree si besoin.
+  toux : miel ou sirop adapte selon toux seche/grasse, avec prudence chez l'enfant.
+  brulures d'estomac : antiacide/alginates, eviter automedication prolongee.
+  diarrhee legere : solution de rehydratation orale, consulter si sang, fievre ou signes de dehydration.
+- Precise toujours que si les symptomes persistent, reviennent, s'aggravent ou durent plus de 48-72h, il faut consulter.
 - Antipyrétique si fièvre — MAIS vérifie d'abord qu'il n'a pas déjà atteint la dose max de Paracétamol (4g/jour)
 
 ÉTAPE 4 — SIGNES D'ALARME :
@@ -115,8 +124,7 @@ RÈGLES ABSOLUES :
 - Français uniquement, 250 mots maximum
 
 $patientInfo$contextInfo""",
-        userMessage:
-            "Le patient décrit les symptômes suivants : $symptoms",
+        userMessage: "Le patient décrit les symptômes suivants : $symptoms",
       ).timeout(_timeout);
 
       return _extractText(response);
@@ -140,7 +148,8 @@ $patientInfo$contextInfo""",
 
     try {
       final response = await _callGemini(
-        systemPrompt: """Tu es un classifier pour un assistant pharmacien à Yaoundé.
+        systemPrompt:
+            """Tu es un classifier pour un assistant pharmacien à Yaoundé.
 Détermine si la requête est liée à la santé, pharmacie, médicaments, symptômes ou bien-être.
 Réponds UNIQUEMENT "OUI" ou "NON".""",
         userMessage: userInput,
@@ -187,8 +196,10 @@ Ton : chaleureux, jamais condescendant, maximum 2-3 phrases. Français uniquemen
   }
 
   /// Conseils détaillés sur un médicament spécifique
-  Future<String> getMedicationAdvice(String medicationName,
-      {String? context}) async {
+  Future<String> getMedicationAdvice(
+    String medicationName, {
+    String? context,
+  }) async {
     if (!isAvailable) {
       return "Je ne peux pas donner de conseils pour le moment (configuration manquante).";
     }
@@ -232,7 +243,8 @@ RÈGLES ABSOLUES :
   // =========================================================
 
   Future<List<String>> _readHandwrittenPrescriptionImpl(
-      Uint8List imageBytes) async {
+    Uint8List imageBytes,
+  ) async {
     if (!isAvailable) return [];
 
     try {
@@ -262,21 +274,18 @@ Si aucune prescription claire n'est visible, réponds : []""",
     final body = jsonEncode({
       'system_instruction': {
         'parts': [
-          {'text': systemPrompt}
-        ]
+          {'text': systemPrompt},
+        ],
       },
       'contents': [
         {
           'role': 'user',
           'parts': [
-            {'text': userMessage}
-          ]
-        }
+            {'text': userMessage},
+          ],
+        },
       ],
-      'generationConfig': {
-        'temperature': 0.7,
-        'maxOutputTokens': 1200,
-      }
+      'generationConfig': {'temperature': 0.7, 'maxOutputTokens': 1200},
     });
 
     final response = await http.post(
@@ -294,7 +303,8 @@ Si aucune prescription claire n'est visible, réponds : []""",
     }
 
     throw Exception(
-        'Erreur API Gemini (${response.statusCode}): ${response.body}');
+      'Erreur API Gemini (${response.statusCode}): ${response.body}',
+    );
   }
 
   Future<String> _callGeminiWithImage({
@@ -307,8 +317,8 @@ Si aucune prescription claire n'est visible, réponds : []""",
     final body = jsonEncode({
       'system_instruction': {
         'parts': [
-          {'text': systemPrompt}
-        ]
+          {'text': systemPrompt},
+        ],
       },
       'contents': [
         {
@@ -316,18 +326,12 @@ Si aucune prescription claire n'est visible, réponds : []""",
           'parts': [
             {'text': userMessage},
             {
-              'inline_data': {
-                'mime_type': 'image/jpeg',
-                'data': base64Image,
-              }
-            }
-          ]
-        }
+              'inline_data': {'mime_type': 'image/jpeg', 'data': base64Image},
+            },
+          ],
+        },
       ],
-      'generationConfig': {
-        'temperature': 0.3,
-        'maxOutputTokens': 300,
-      }
+      'generationConfig': {'temperature': 0.3, 'maxOutputTokens': 300},
     });
 
     final response = await http.post(
@@ -345,7 +349,8 @@ Si aucune prescription claire n'est visible, réponds : []""",
     }
 
     throw Exception(
-        'Erreur API Gemini (${response.statusCode}): ${response.body}');
+      'Erreur API Gemini (${response.statusCode}): ${response.body}',
+    );
   }
 
   List<String> _extractMedications(String jsonResponse) {
@@ -355,10 +360,7 @@ Si aucune prescription claire n'est visible, réponds : []""",
       final parts = content?['parts'] as List<dynamic>?;
       if (parts != null && parts.isNotEmpty) {
         String text = parts.first['text']?.toString() ?? '[]';
-        text = text
-            .replaceAll('```json', '')
-            .replaceAll('```', '')
-            .trim();
+        text = text.replaceAll('```json', '').replaceAll('```', '').trim();
         final parsed = jsonDecode(text);
         if (parsed is List) {
           return List<String>.from(parsed);

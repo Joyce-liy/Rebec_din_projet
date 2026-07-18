@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:flutter_tts/flutter_tts.dart';
@@ -22,7 +20,6 @@ enum _ConversationStage {
   idle,
   awaitingAllergyInfo,
   awaitingPharmacyChoice,
-  awaitingActionChoice,
   awaitingWhatsAppReply,
 
   /// FIX #1: nouveau état — l'utilisateur a demandé des conseils directs
@@ -47,10 +44,8 @@ class _ChatMessage {
   final bool isUser;
   final DateTime timestamp;
 
-  _ChatMessage({
-    required this.text,
-    required this.isUser,
-  }) : timestamp = DateTime.now();
+  _ChatMessage({required this.text, required this.isUser})
+    : timestamp = DateTime.now();
 
   String get role => isUser ? 'Utilisateur' : 'REBEC-DIN';
 }
@@ -88,14 +83,13 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   // ---- Vocal ----
   bool _speechAvailable = false;
   bool _isListening = false;
+  bool _ttsEnabled = true;
 
   // ---- Données métier ----
   List<_PharmacyOption> _currentOptions = [];
   _PharmacyOption? _selectedOption;
   String? _lastMedicationQuery;
   int? _recommendedIndex;
-  StreamSubscription<WhatsAppConversation?>? _whatsAppConversationSubscription;
-  final Set<String> _handledWhatsAppMessageIds = {};
 
   // --- Position utilisateur (dynamic pour compatibilité
   dynamic _userLocation;
@@ -135,7 +129,6 @@ class _ChatAIScreenState extends State<ChatAIScreen>
 
   @override
   void dispose() {
-    _whatsAppConversationSubscription?.cancel();
     _typingAnimController.dispose();
     _inputController.dispose();
     _scrollController.dispose();
@@ -185,9 +178,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     final window = _messages.length > _contextWindowSize
         ? _messages.sublist(_messages.length - _contextWindowSize)
         : List<_ChatMessage>.from(_messages);
-    return window
-        .map((m) => '[${m.role}]: ${m.text}')
-        .join('\n---\n');
+    return window.map((m) => '[${m.role}]: ${m.text}').join('\n---\n');
   }
 
   // ===========================================================
@@ -197,20 +188,105 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   bool _isGreeting(String value) {
     final raw = value.trim().toLowerCase();
     const greetings = [
-      'bonjour', 'salut', 'bonsoir', 'coucou', 'hey', 'hello', 'hi', 'salam'
+      'bonjour',
+      'salut',
+      'bonsoir',
+      'coucou',
+      'hey',
+      'hello',
+      'hi',
+      'salam',
     ];
     return greetings.contains(raw);
+  }
+
+  String _greetingReply(String value) {
+    final raw = value.trim().toLowerCase();
+    if (raw.contains('bonsoir')) {
+      return "Bonsoir, comment puis-je vous aider ?";
+    }
+
+    final hour = DateTime.now().hour;
+    final greeting = hour >= 18 ? 'Bonsoir' : 'Bonjour';
+    return "$greeting, comment puis-je vous aider ?";
   }
 
   bool _isSymptomDescription(String value) {
     final lower = value.trim().toLowerCase();
     const keywords = [
-      'fievre', 'fièvre', 'frisson', 'mal', 'douleur', 'toux',
-      'vomis', 'diarrhee', 'diarrhée', 'fatigue', 'faible', 'fatigué',
-      'pas bien', 'malade', 'grippe', 'palu', 'paludisme', 'nausee',
-      'nausée', 'vertige', 'maux', 'brulure', 'brûlure', 'courbature',
-      'transpire', 'sueur', 'essoufle', 'essoufflé', 'tete qui tourne',
-      'pas me sentir', 'me sens pas', 'mal depuis', 'depuis hier', 'depuis ce matin',
+      'fievre',
+      'fièvre',
+      'frisson',
+      'mal',
+      'douleur',
+      'toux',
+      'vomis',
+      'diarrhee',
+      'diarrhée',
+      'fatigue',
+      'faible',
+      'fatigué',
+      'pas bien',
+      'malade',
+      'grippe',
+      'palu',
+      'paludisme',
+      'nausee',
+      'nausée',
+      'vertige',
+      'maux',
+      'brulure',
+      'brûlure',
+      'courbature',
+      'transpire',
+      'sueur',
+      'essoufle',
+      'essoufflé',
+      'tete qui tourne',
+      'pas me sentir',
+      'me sens pas',
+      'mal depuis',
+      'depuis hier',
+      'depuis ce matin',
+      'migraine',
+      'tete',
+      'mal a la tete',
+      'gorge',
+      'ventre',
+      'rhume',
+      'nez bouche',
+      'constipation',
+      'ballonnement',
+      'acidite',
+    ];
+    for (final k in keywords) {
+      if (lower.contains(k)) return true;
+    }
+    return false;
+  }
+
+  bool _hasSeriousSymptoms(String value) {
+    final lower = value.trim().toLowerCase();
+    const keywords = [
+      'convulsion',
+      'confusion',
+      'perte de connaissance',
+      'evanoui',
+      'difficulte a respirer',
+      'respire mal',
+      'douleur poitrine',
+      'saignement abondant',
+      'sang dans les selles',
+      'vomit du sang',
+      'vomissements repetes',
+      'raideur de nuque',
+      'paralysie',
+      'faiblesse d un cote',
+      'forte fievre',
+      'fievre tres elevee',
+      'grossesse',
+      'enceinte',
+      'bebe',
     ];
     for (final k in keywords) {
       if (lower.contains(k)) return true;
@@ -220,22 +296,36 @@ class _ChatAIScreenState extends State<ChatAIScreen>
 
   bool _isPharmacyLocationRequest(String value) {
     final lower = value.trim().toLowerCase();
-    final hasLocation = lower.contains('pharmacie') ||
+    final hasLocation =
+        lower.contains('pharmacie') ||
         lower.contains('officine') ||
+        lower.contains('itineraire') ||
+        lower.contains('route') ||
         lower.contains('ou trouver') ||
         lower.contains('où trouver');
 
-    final hasProximity = lower.contains('proche') ||
+    final hasProximity =
+        lower.contains('proche') ||
         lower.contains('plus proche') ||
         lower.contains('autour') ||
         lower.contains('pres de') ||
         lower.contains('à cote') ||
         lower.contains('a cote') ||
         lower.contains('ou est') ||
+        lower.contains('aller') ||
         lower.contains('où est') ||
         lower.contains('trouver');
 
     return hasLocation || hasProximity;
+  }
+
+  bool _isRouteOnlyRequest(String value) {
+    final lower = value.trim().toLowerCase();
+    return lower.contains('itineraire') ||
+        lower.contains('route') ||
+        lower.contains('guide moi') ||
+        lower.contains('y aller') ||
+        lower.contains('aller a la pharmacie');
   }
 
   /// FIX #1 : Détecte une demande de conseil direct (posologie, effets secondaires…)
@@ -243,13 +333,40 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   bool _isMedicationAdviceRequest(String value) {
     final lower = value.trim().toLowerCase();
     const adviceKeywords = [
-      'posologie', 'dose', 'dosage', 'comment prendre', 'comment utiliser',
-      'effets secondaires', 'effet secondaire', 'effets indésirables',
-      'contre-indication', 'contre indication', 'allergie à',
-      'interaction', 'à jeun', 'avec repas', 'overdose', 'surdosage',
-      'danger', 'dangereux', 'conseils', 'conseil sur', 'à quoi sert',
-      'à quoi ca sert', 'indication', 'utilisation', 'utiliser',
-      'comment ça marche', 'comment ca marche', 'que fait',
+      'posologie',
+      'dose',
+      'dosage',
+      'comment prendre',
+      'comment utiliser',
+      'effets secondaires',
+      'effet secondaire',
+      'effets indésirables',
+      'contre-indication',
+      'contre indication',
+      'allergie à',
+      'interaction',
+      'à jeun',
+      'avec repas',
+      'overdose',
+      'surdosage',
+      'danger',
+      'dangereux',
+      'conseils',
+      'conseil sur',
+      'à quoi sert',
+      'à quoi ca sert',
+      'indication',
+      'utilisation',
+      'utiliser',
+      'comment ça marche',
+      'comment ca marche',
+      'que fait',
+      'information sur',
+      'infos sur',
+      'info sur',
+      'peut on prendre',
+      'puis je prendre',
+      'puis-je prendre',
     ];
     for (final k in adviceKeywords) {
       if (lower.contains(k)) return true;
@@ -260,10 +377,30 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   bool _isObviouslyOffTopic(String value) {
     final lower = value.trim().toLowerCase();
     const keywords = [
-      'football', 'sport', 'musique', 'politique', 'meteo', 'météo',
-      'recette', 'cuisine', 'cinema', 'cinéma', 'film', 'serie', 'série',
-      'gaming', 'jeu video', 'informatique', 'programmation', 'codage',
-      'crypto', 'bitcoin', 'framework', 'javascript', 'python', 'base de donnees',
+      'football',
+      'sport',
+      'musique',
+      'politique',
+      'meteo',
+      'météo',
+      'recette',
+      'cuisine',
+      'cinema',
+      'cinéma',
+      'film',
+      'serie',
+      'série',
+      'gaming',
+      'jeu video',
+      'informatique',
+      'programmation',
+      'codage',
+      'crypto',
+      'bitcoin',
+      'framework',
+      'javascript',
+      'python',
+      'base de donnees',
     ];
     for (final k in keywords) {
       if (lower.contains(k)) return true;
@@ -288,14 +425,6 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     _currentConsultation = _ConsultationData(symptoms: symptoms);
     _lastMedicationQuery = symptoms;
 
-    await _addAIMessage(
-      "Je comprends, ce n'est pas agréable de se sentir ainsi. "
-      "Vous avez bien fait de venir, nous allons faire le point ensemble.\n\n"
-      "Avant de vous conseiller au mieux, j'ai besoin de deux informations :\n"
-      "1️⃣  Avez-vous des allergies connues à des médicaments ?\n"
-      "2️⃣  Avez-vous déjà pris quelque chose aujourd'hui "
-      "(Paracétamol, aspirine, un antipaludique...) ?",
-    );
     setState(() => _stage = _ConversationStage.awaitingAllergyInfo);
   }
 
@@ -377,7 +506,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
   Future<void> _searchNearestPharmacy() async {
     setState(() => _isProcessing = true);
 
-    await _addAIMessage("🔍 Je recherche les officines autour de vous à Yaoundé...");
+    await _addAIMessage(
+      "🔍 Je recherche les officines autour de vous à Yaoundé...",
+    );
 
     final location = await _locationService.tryGetCurrentPosition();
     if (location == null) {
@@ -403,20 +534,23 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       return;
     }
 
-    final options = pharmacies.map((pharmacy) {
-      final point = pharmacy.localisation;
-      final distance = point == null
-          ? null
-          : GeoUtils.haversineDistance(
-              startLat: location.latitude,
-              startLng: location.longitude,
-              endLat: point.latitude,
-              endLng: point.longitude,
-            );
-      return _PharmacyOption(pharmacy: pharmacy, distanceMeters: distance);
-    }).toList()
-      ..sort((a, b) =>
-          (a.distanceMeters ?? 999999).compareTo(b.distanceMeters ?? 999999));
+    final options =
+        pharmacies.map((pharmacy) {
+          final point = pharmacy.localisation;
+          final distance = point == null
+              ? null
+              : GeoUtils.haversineDistance(
+                  startLat: location.latitude,
+                  startLng: location.longitude,
+                  endLat: point.latitude,
+                  endLng: point.longitude,
+                );
+          return _PharmacyOption(pharmacy: pharmacy, distanceMeters: distance);
+        }).toList()..sort(
+          (a, b) => (a.distanceMeters ?? 999999).compareTo(
+            b.distanceMeters ?? 999999,
+          ),
+        );
 
     _currentOptions = options.take(3).toList();
 
@@ -457,8 +591,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       final min = s == null ? null : (s / 60).round();
       if (min != null) {
         buf.writeln(
-            "⭐ La plus rapide : ${rec.pharmacy.nom} "
-            "(~$min minute${min > 1 ? 's' : ''} en voiture)\n");
+          "⭐ La plus rapide : ${rec.pharmacy.nom} "
+          "(~$min minute${min > 1 ? 's' : ''} en voiture)\n",
+        );
       }
     }
 
@@ -472,7 +607,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       buf.writeln("${i + 1}. ${opt.pharmacy.nom}$km$min");
     }
 
-    buf.write("\nTapez le numero pour choisir une pharmacie.");
+    buf.write(
+      "\nTapez le numéro pour ouvrir l'itinéraire de la pharmacie choisie.",
+    );
 
     await _addAIMessage(buf.toString());
     setState(() => _stage = _ConversationStage.awaitingPharmacyChoice);
@@ -511,20 +648,23 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       return;
     }
 
-    final options = pharmacies.map((pharmacy) {
-      final point = pharmacy.localisation;
-      final distance = point == null
-          ? null
-          : GeoUtils.haversineDistance(
-              startLat: location.latitude,
-              startLng: location.longitude,
-              endLat: point.latitude,
-              endLng: point.longitude,
-            );
-      return _PharmacyOption(pharmacy: pharmacy, distanceMeters: distance);
-    }).toList()
-      ..sort((a, b) =>
-          (a.distanceMeters ?? 999999).compareTo(b.distanceMeters ?? 999999));
+    final options =
+        pharmacies.map((pharmacy) {
+          final point = pharmacy.localisation;
+          final distance = point == null
+              ? null
+              : GeoUtils.haversineDistance(
+                  startLat: location.latitude,
+                  startLng: location.longitude,
+                  endLat: point.latitude,
+                  endLng: point.longitude,
+                );
+          return _PharmacyOption(pharmacy: pharmacy, distanceMeters: distance);
+        }).toList()..sort(
+          (a, b) => (a.distanceMeters ?? 999999).compareTo(
+            b.distanceMeters ?? 999999,
+          ),
+        );
 
     _currentOptions = options.take(5).toList();
 
@@ -569,7 +709,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       final label = min == null
           ? "la plus proche"
           : "la plus rapide (~$min min de trajet)";
-      buf.writeln("⭐ Recommandation REBEC-DIN : ${rec.pharmacy.nom} ($label)\n");
+      buf.writeln(
+        "⭐ Recommandation REBEC-DIN : ${rec.pharmacy.nom} ($label)\n",
+      );
     }
 
     for (int i = 0; i < _currentOptions.length; i++) {
@@ -582,7 +724,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       buf.writeln("${i + 1}. ${opt.pharmacy.nom}$km$min");
     }
 
-    buf.write("\nDites ou tapez le numéro de la pharmacie souhaitée.");
+    buf.write(
+      "\nDites ou tapez le numéro de la pharmacie souhaitée pour ouvrir l'itinéraire.",
+    );
 
     await _addAIMessage(buf.toString());
     setState(() => _stage = _ConversationStage.awaitingPharmacyChoice);
@@ -605,7 +749,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     final dynamic location = await _locationService.tryGetCurrentPosition();
     if (location == null) {
       setState(() => _isProcessing = false);
-      await _addAIMessage("Position utilisateur introuvable. Activez la localisation et réessayez.");
+      await _addAIMessage(
+        "Position utilisateur introuvable. Activez la localisation et réessayez.",
+      );
       return;
     }
 
@@ -657,18 +803,22 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       return;
     }
 
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => InAppNavigationPage(
-        startLat: startLat,
-        startLng: startLng,
-        destLat: destLat,
-        destLng: destLng,
-        pharmacyName: (pharmacy as dynamic).nom?.toString() ?? '',
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => InAppNavigationPage(
+          startLat: startLat,
+          startLng: startLng,
+          destLat: destLat,
+          destLng: destLng,
+          pharmacyName: (pharmacy as dynamic).nom?.toString() ?? '',
+        ),
       ),
-    ));
+    );
 
     setState(() => _isProcessing = false);
-    await _addAIMessage("Itinéraire ouvert dans l'application vers ${(pharmacy as dynamic).nom}.");
+    await _addAIMessage(
+      "Itinéraire ouvert dans l'application vers ${(pharmacy as dynamic).nom}.",
+    );
   }
 
   String? _primaryWhatsAppNumber(Pharmacy pharmacy) {
@@ -687,7 +837,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     final pharmacy = _selectedOption?.pharmacy;
     final phone = pharmacy?.telephone?.trim();
     if (pharmacy == null || phone == null || phone.isEmpty) {
-      await _addAIMessage("Le numero de telephone de cette pharmacie est indisponible.");
+      await _addAIMessage(
+        "Le numero de telephone de cette pharmacie est indisponible.",
+      );
       return;
     }
 
@@ -708,7 +860,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
 
     final phone = _primaryWhatsAppNumber(pharmacy);
     if (phone == null) {
-      await _addAIMessage("Le contact WhatsApp de cette pharmacie est indisponible.");
+      await _addAIMessage(
+        "Le contact WhatsApp de cette pharmacie est indisponible.",
+      );
       return;
     }
 
@@ -716,73 +870,22 @@ class _ChatAIScreenState extends State<ChatAIScreen>
         ? _lastMedicationQuery!.trim()
         : 'le medicament recherche';
 
-    final result = await _whatsAppService.sendAvailabilityRequest(
+    final launched = await _whatsAppService.openAvailabilityRequest(
       phoneNumber: phone,
-      pharmacyId: pharmacy.id,
       pharmacyName: pharmacy.nom,
       medicationName: medication,
     );
 
-    if (!result.success) {
-      await _addAIMessage(
-        result.message ?? "Impossible d'envoyer le message WhatsApp.",
-      );
+    if (!launched) {
+      await _addAIMessage("Impossible d'ouvrir WhatsApp pour le moment.");
       return;
     }
 
-    final conversationId = result.conversationId;
-    if (conversationId != null) {
-      _listenToWhatsAppConversation(
-        conversationId: conversationId,
-        pharmacy: pharmacy,
-        medicationName: medication,
-      );
-    }
-
     await _addAIMessage(
-      "Demande WhatsApp envoyee en arriere-plan a ${pharmacy.nom}. "
-      "Je surveille les reponses et je les afficherai ici automatiquement.",
+      "J'ai ouvert WhatsApp avec un message pret a envoyer a ${pharmacy.nom}. "
+      "Quand la pharmacie repond, copiez sa reponse ici et je l'interpreterai.",
     );
     setState(() => _stage = _ConversationStage.awaitingWhatsAppReply);
-  }
-
-  void _listenToWhatsAppConversation({
-    required String conversationId,
-    required Pharmacy pharmacy,
-    required String medicationName,
-  }) {
-    _whatsAppConversationSubscription?.cancel();
-    _handledWhatsAppMessageIds.clear();
-    _whatsAppConversationSubscription =
-        _whatsAppService.watchConversation(conversationId).listen(
-      (conversation) async {
-        if (!mounted || conversation == null) return;
-
-        final incomingMessages = conversation.messages.where((message) {
-          final messageKey = message.id.isNotEmpty
-              ? message.id
-              : '${message.createdAt.microsecondsSinceEpoch}_${message.text.hashCode}';
-          return message.direction == WhatsAppMessageDirection.incoming &&
-              _handledWhatsAppMessageIds.add(messageKey);
-        });
-
-        for (final message in incomingMessages) {
-          final interpretation = _whatsAppService.interpretPharmacyReply(
-            message.text,
-            pharmacyName: pharmacy.nom,
-            medicationName: medicationName,
-          );
-          await _addAIMessage(
-            "Reponse WhatsApp de ${pharmacy.nom} :\n"
-            "${message.text}\n\n"
-            "${interpretation.summary}",
-          );
-          if (mounted) {
-            setState(() => _stage = _ConversationStage.idle);
-          }
-        }
-      },
-    );
   }
 
   Future<void> _interpretWhatsAppReply(String reply) async {
@@ -793,7 +896,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
 
     if (pharmacy == null) {
       setState(() => _stage = _ConversationStage.idle);
-      await _addAIMessage("Je n'ai plus la pharmacie selectionnee. Relancez la recherche.");
+      await _addAIMessage(
+        "Je n'ai plus la pharmacie selectionnee. Relancez la recherche.",
+      );
       return;
     }
 
@@ -805,7 +910,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
 
     await _addAIMessage(interpretation.summary);
     setState(() => _stage = _ConversationStage.idle);
-    await _addAIMessage("Vous pouvez rechercher un autre medicament si besoin.");
+    await _addAIMessage(
+      "Vous pouvez rechercher un autre medicament si besoin.",
+    );
   }
 
   Future<void> _giveBasicAdvice() async {
@@ -850,7 +957,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     if (_isListening) await _stopListening();
     setState(() => _messages.add(_ChatMessage(text: text, isUser: false)));
     _scrollToBottom();
-    await _flutterTts.speak(text);
+    if (_ttsEnabled) {
+      await _flutterTts.speak(text);
+    }
   }
 
   Future<void> _addUserMessage(String text) async {
@@ -882,30 +991,13 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     await _addUserMessage(input);
 
     if (_stage == _ConversationStage.awaitingWhatsAppReply) {
-      if (input.toLowerCase().contains('annuler')) {
-        await _whatsAppConversationSubscription?.cancel();
-        setState(() => _stage = _ConversationStage.idle);
-        await _addAIMessage(
-          "Attente WhatsApp annulee. Vous pouvez lancer une autre recherche.",
-        );
-      } else {
-        await _addAIMessage(
-          "J'attends encore la reponse automatique de la pharmacie. "
-          "Tapez annuler pour quitter cette attente.",
-        );
-      }
+      await _interpretWhatsAppReply(input);
       return;
     }
 
     // ─── 1. Salutation ───────────────────────────────────────
     if (_isGreeting(input)) {
-      await _addAIMessage(
-        "Bonjour ! Ravi de vous accueillir. "
-        "Comment puis-je vous aider aujourd'hui ?\n\n"
-        "• Décrivez vos symptômes\n"
-        "• Nommez un médicament à trouver\n"
-        "• Demandez des conseils (posologie, effets secondaires...)",
-      );
+      await _addAIMessage(_greetingReply(input));
       return;
     }
 
@@ -926,14 +1018,8 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       final index = _parseChoice(input);
       if (index != null && index > 0 && index <= _currentOptions.length) {
         _selectedOption = _currentOptions[index - 1];
-        await _addAIMessage(
-          "Vous avez sélectionné ${_selectedOption!.pharmacy.nom}.\n\n"
-          "Que souhaitez-vous faire ?\n"
-          "1. Lancer l'itineraire\n"
-          "2. Appeler la pharmacie\n"
-          "3. WhatsApp disponibilite et prix",
-        );
-        setState(() => _stage = _ConversationStage.awaitingActionChoice);
+        setState(() => _stage = _ConversationStage.idle);
+        await _launchNavigation();
       } else {
         await _addAIMessage(
           "Je n'ai pas compris. Veuillez dire un numéro entre 1 et ${_currentOptions.length}.",
@@ -946,29 +1032,13 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     // L'utilisateur vient de taper le nom du médicament qu'on lui a demandé
     if (_stage == _ConversationStage.awaitingDirectAdviceConfirm) {
       _lastMedicationQuery = input;
-      setState(() => _ConversationStage.idle);
+      setState(() => _stage = _ConversationStage.idle);
       await _handleDirectAdviceRequest(input);
       return;
     }
 
     // ─── 5. Étape : awaiting action choice ───────────────────
-    if (_stage == _ConversationStage.awaitingActionChoice) {
-      final choice = _parseChoice(input);
-      if (choice == 1) {
-        await _launchNavigation();
-        setState(() => _stage = _ConversationStage.idle);
-        await _addAIMessage("Quel autre médicament puis-je vous aider à trouver ?");
-      } else if (choice == 2) {
-        setState(() => _stage = _ConversationStage.idle);
-        await _launchPhoneCall();
-        await _addAIMessage("Quel autre medicament puis-je vous aider a trouver ?");
-      } else if (choice == 3) {
-        await _launchWhatsAppAvailabilityRequest();
-      } else {
-        await _addAIMessage("Veuillez répondre par 1, 2 ou 3.");
-      }
-      return;
-    }
+    // (Supprimé : la sélection du numéro ouvre maintenant directement l'itinéraire)
 
     // ─── 6. Étape : idle — analyse de l'intention ────────────
 
@@ -992,6 +1062,14 @@ class _ChatAIScreenState extends State<ChatAIScreen>
 
     // 6b. Description de symptômes
     if (_isSymptomDescription(input)) {
+      if (_hasSeriousSymptoms(input)) {
+        await _addAIMessage(
+          "Vos symptomes peuvent etre serieux. Je vous conseille de consulter rapidement un medecin "
+          "ou de vous rendre aux urgences, surtout si cela s'aggrave, dure longtemps, ou concerne un enfant, "
+          "une femme enceinte ou une personne fragile.",
+        );
+        return;
+      }
       await _startSymptomConsultation(input);
       return;
     }
@@ -1048,7 +1126,8 @@ class _ChatAIScreenState extends State<ChatAIScreen>
     if (match != null) return int.tryParse(match.group(1) ?? '');
 
     const words = <String, int>{
-      'un': 1, 'une': 1,
+      'un': 1,
+      'une': 1,
       'deux': 2,
       'trois': 3,
       'quatre': 4,
@@ -1094,16 +1173,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
               const Color(0xFF388E3C),
               Icons.local_pharmacy_outlined,
             )
-          else if (_stage == _ConversationStage.awaitingActionChoice)
-            _buildContextPill(
-              "Choisissez une action : 1, 2 ou 3",
-              const Color(0xFFE3F2FD),
-              const Color(0xFF1976D2),
-              Icons.touch_app_outlined,
-            )
           else if (_stage == _ConversationStage.awaitingWhatsAppReply)
             _buildContextPill(
-              "En attente de la reponse WhatsApp automatique",
+              "Collez ici la reponse WhatsApp de la pharmacie",
               const Color(0xFFE8F5E9),
               const Color(0xFF128C7E),
               Icons.chat_outlined,
@@ -1144,7 +1216,7 @@ class _ChatAIScreenState extends State<ChatAIScreen>
             color: Color(0x3300695C),
             blurRadius: 8,
             offset: Offset(0, 3),
-          )
+          ),
         ],
       ),
       child: SafeArea(
@@ -1160,7 +1232,10 @@ class _ChatAIScreenState extends State<ChatAIScreen>
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
                   shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withOpacity(0.5), width: 1.5),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.5),
+                    width: 1.5,
+                  ),
                 ),
                 child: const Center(
                   child: Text(
@@ -1199,7 +1274,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
                           ),
                         ),
                         Text(
-                          _isProcessing ? "En train de répondre..." : "Pharmacien Virtuel • Yaoundé",
+                          _isProcessing
+                              ? "En train de répondre..."
+                              : "Pharmacien Virtuel • Yaoundé",
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.85),
                             fontSize: 12,
@@ -1210,6 +1287,21 @@ class _ChatAIScreenState extends State<ChatAIScreen>
                   ],
                 ),
               ),
+              if (!_isProcessing)
+                IconButton(
+                  icon: Icon(
+                    _ttsEnabled ? Icons.volume_up : Icons.volume_off,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  tooltip: _ttsEnabled ? 'Désactiver voix' : 'Activer voix',
+                  onPressed: () async {
+                    setState(() => _ttsEnabled = !_ttsEnabled);
+                    if (!_ttsEnabled) {
+                      await _flutterTts.stop();
+                    }
+                  },
+                ),
               if (_isProcessing)
                 const SizedBox(
                   width: 20,
@@ -1261,7 +1353,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isUser
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         children: [
           // Avatar IA (uniquement pour les messages de l'IA)
           if (!isUser) ...[
@@ -1293,8 +1387,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
           // Bulle + horodatage
           Flexible(
             child: Column(
-              crossAxisAlignment:
-                  isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              crossAxisAlignment: isUser
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
                 Container(
                   constraints: BoxConstraints(
@@ -1368,11 +1463,14 @@ class _ChatAIScreenState extends State<ChatAIScreen>
               shape: BoxShape.circle,
             ),
             child: const Center(
-              child: Text("R",
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold)),
+              child: Text(
+                "R",
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ),
           Container(
@@ -1399,7 +1497,10 @@ class _ChatAIScreenState extends State<ChatAIScreen>
                 return Row(
                   children: List.generate(3, (i) {
                     final delay = i * 0.2;
-                    final value = (_typingAnimController.value - delay).clamp(0.0, 1.0);
+                    final value = (_typingAnimController.value - delay).clamp(
+                      0.0,
+                      1.0,
+                    );
                     return Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 2),
                       child: Transform.translate(
@@ -1468,7 +1569,9 @@ class _ChatAIScreenState extends State<ChatAIScreen>
                 ),
                 onPressed: _speechAvailable && !_isProcessing
                     ? () async {
-                        _isListening ? await _stopListening() : await _startListening();
+                        _isListening
+                            ? await _stopListening()
+                            : await _startListening();
                       }
                     : null,
               ),
@@ -1493,10 +1596,10 @@ class _ChatAIScreenState extends State<ChatAIScreen>
                     hintText: _isProcessing
                         ? "REBEC-DIN réfléchit..."
                         : _stage == _ConversationStage.awaitingAllergyInfo
-                            ? "Vos allergies et médicaments du jour..."
-                            : _stage == _ConversationStage.awaitingWhatsAppReply
-                                ? "Tapez annuler pour reprendre..."
-                                : "Symptômes, médicament, posologie...",
+                        ? "Vos allergies et médicaments du jour..."
+                        : _stage == _ConversationStage.awaitingWhatsAppReply
+                        ? "Collez la reponse WhatsApp..."
+                        : "Symptômes, médicament, posologie...",
                     hintStyle: TextStyle(
                       color: Colors.grey.shade400,
                       fontSize: 14,
@@ -1526,7 +1629,11 @@ class _ChatAIScreenState extends State<ChatAIScreen>
               ),
               child: IconButton(
                 padding: EdgeInsets.zero,
-                icon: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+                icon: const Icon(
+                  Icons.send_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
                 onPressed: _isProcessing
                     ? null
                     : () => _handleInput(_inputController.text),
